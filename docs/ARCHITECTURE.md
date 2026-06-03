@@ -110,7 +110,7 @@ A single, heavily guarded `execute_python` function.
 - No LLM call.
 - Loads the CSV via `load_csv` and stores the DataFrame as `state.df`.
 - Computes structural metadata via `profile_dataframe`.
-- Applies truncation for wide DataFrames: retains full statistical details for columns named in the query plus the top 15 columns by completeness. **Always includes the name and dtype of every column in the profile payload regardless of truncation**, so the Planner can reference any column by name even if its detailed stats were dropped.
+- Applies a token count check before building the profile payload. If the full profile for all columns fits within a safe threshold, it sends complete statistics for every column. If the full profile exceeds the threshold, it falls back to intelligent truncation: full statistical details for columns named in the query plus the top 15 columns by completeness. In both cases it **always includes the name and dtype of every column**, so the Planner can reference any column by name regardless of whether its detailed stats were included.
 - Extracts a 3-row sample for format context.
 - Stores the optimized `CSVProfile` in state.
 
@@ -160,7 +160,7 @@ A single, heavily guarded `execute_python` function.
 START
   │
   ▼
-ProfilerNode ── (deterministic, builds truncated CSVProfile)
+ProfilerNode ── (deterministic, builds CSVProfile — full stats or truncated based on token count)
   │
   ▼
 PlannerNode ─── (LLM generates Plan, sets execution_status = "running")
@@ -238,7 +238,7 @@ CI runs on every push via `uv run pytest`.
 ```mermaid
 graph TD
     UI[Streamlit UI] -->|invoke| Graph[LangGraph App]
-    Graph --> Profiler[ProfilerNode - loads df into state, builds truncated CSVProfile]
+    Graph --> Profiler[ProfilerNode - loads df into state, full or truncated CSVProfile]
     Profiler --> Planner[PlannerNode - LLM via retry wrapper]
     Planner -->|plan + execution_status = running| Executor[ExecutorNode]
     Executor -->|tool dispatch - passes state.df| Tools[Deterministic Tools - Safe Eval]

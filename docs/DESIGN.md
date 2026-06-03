@@ -35,11 +35,12 @@ Flow: `UI → Graph → Nodes → Tools → Data`
 
 ## Why Not a Supervisor Agent?
 
-We originally considered a Supervisor pattern (dynamic routing per step). We switched to Plan-and-Execute for three reasons:
+We originally considered a Supervisor pattern (dynamic routing per step). We switched to Plan-and-Execute for four reasons:
 
 1. **Transparency:** The full plan is visible upfront, which builds trust and makes debugging trivial.
 2. **Efficiency:** Only one planning LLM call; subsequent steps are deterministic tool invocations or lightweight LLM summaries.
 3. **Portfolio Clarity:** Plan-and-execute is a well-understood, production-proven pattern that neatly separates reasoning (planner) from action (executor).
+4. **Accumulated context cost:** A supervisor makes one LLM call per step, and each call receives the full accumulated conversation history: the original query, every previous tool output, every routing decision so far. By step 6 of an 8-step analysis, the supervisor is processing a long and growing context just to decide what to do next. This burns tokens on repeated context the model has already seen, increases latency on every step, and on Groq's free tier hits the tokens-per-minute rate limit faster. Plan-and-execute avoids this entirely: the planner reads the profile once, the executor dispatches steps with no LLM call for Tier 1 tools, and the reporter reads all outputs once at the end.
 
 ---
 
@@ -85,7 +86,7 @@ The UI shows when Tier 2 is activated. The README explains the escalation logic.
 
 ## The Fixed Plan-and-Execute Loop
 
-1. **Profiler Node (deterministic):** Runs first. Calls `profile_dataframe` and `load_csv`. Loads the CSV into memory and stores the resulting DataFrame as `state.df`. To prevent context window bloat on wide DataFrames, it implements an intelligent truncation strategy for the profile payload: it retains full statistical details for columns explicitly named in the user query, plus the top 15 most populated numerical/categorical columns. It always includes the name and dtype of every column regardless of truncation, so the Planner can reference any column by name. It also extracts a 3-row data sample for format inference. No LLM involved.
+1. **Profiler Node (deterministic):** Runs first. Calls `profile_dataframe` and `load_csv`. Loads the CSV into memory and stores the resulting DataFrame as `state.df`. For the profile payload sent to the Planner, it applies a token count check first. If the full profile for all columns fits within a safe threshold, it sends complete statistics for every column with no truncation. If the full profile exceeds the threshold, it falls back to intelligent truncation: full statistical details for columns explicitly named in the user query, plus the top 15 most populated numerical/categorical columns. In both cases it always includes the name and dtype of every column in the payload, so the Planner can reference any column by name regardless of whether its detailed stats were included. It also extracts a 3-row data sample for format inference. No LLM involved.
 
 2. **Planner Node (LLM):** Receives the user query and the optimized profile payload. Outputs a `Plan` (Pydantic list of `Step` objects). For sandbox steps, it writes only a natural-language instruction, never code. Sets `execution_status` to `"running"`.
 
