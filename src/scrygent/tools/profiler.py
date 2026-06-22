@@ -2,7 +2,6 @@ import logging
 import re
 from typing import Any
 import pandas as pd
-import numpy as np
 
 from .io import get_column_sample
 
@@ -11,23 +10,6 @@ logger = logging.getLogger(__name__)
 # Configurable threshold for token safety (Tier 1 Architecture Rule)
 MAX_DETAILED_COLUMNS = 15
 
-
-def _safe_cast_metric(value: Any) -> float | None:
-    """
-    Safely casts Pandas/Numpy numerical metrics to standard Python floats.
-    Handles NaN, NaT, None, and Infinity, converting invalid JSON numbers to None.
-    """
-    if pd.isna(value):
-        return None
-    try:
-        if isinstance(value, np.integer):
-            return int(value)
-        float_val = float(value)
-        if np.isinf(float_val) or np.isnan(float_val):
-            return None
-        return float_val
-    except (ValueError, TypeError):
-        return None
 
 def _get_global_schema(df: pd.DataFrame) -> dict[str, str]:
     """
@@ -112,10 +94,10 @@ def _compute_detailed_stats(df: pd.DataFrame, target_columns: list[str]) -> dict
         
         # Add bounded stats only for numeric types safely cast to standard Python floats
         if pd.api.types.is_numeric_dtype(col_data):
-            col_stats["min"] = _safe_cast_metric(col_data.min())
-            col_stats["max"] = _safe_cast_metric(col_data.max())
-            col_stats["mean"] = _safe_cast_metric(col_data.mean())
-            
+            col_stats["min"] = col_data.min()
+            col_stats["max"] = col_data.max()
+            col_stats["mean"] = col_data.mean()
+        
         stats[str(col)] = col_stats
         
     return stats

@@ -1,11 +1,11 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 
-from .models import CSVProfile, Plan, AnalysisReport, DirectAnswer
-
+from .schemas import CSVProfile, Plan, AnalysisReport, DirectAnswer
+from .base_model import ScrygentBaseModel
 
 # Strict Type Definitions for JSON execution memory.
 type JSONPrimitive = str | int | float | bool | None
@@ -15,7 +15,7 @@ type JSONType = JSONPrimitive | list['JSONType'] | dict[str, 'JSONType']
 type ToolOutput = dict[str, JSONType] | str
 
 
-class AgentState(BaseModel):
+class AgentState(ScrygentBaseModel):
     """
     The AgentState class encapsulates the entire state of the agent 
     during a single user session. It is designed to be serializable to 
