@@ -8,3 +8,28 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+
+# Ignore standard AI Agent system prompt instructions
+AGENTS.md
+AGENTS.local.md
+
+# Test and coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.py,cover
+
+# Development
+.ruff_cache/
+.mypy_cache/
+*.log
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+data/
