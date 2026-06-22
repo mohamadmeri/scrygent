@@ -28,7 +28,11 @@ def load_csv(file_path: str | Path) -> pd.DataFrame:
 
 
 def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict]:
-    """Extracts a strict n-row sample from the head of the DataFrame."""
-    sample_df = df.head(n)
-    logger.debug("Extracted %d rows for column sample.", len(sample_df))
-    return sample_df.to_dict(orient="records")
+    """Extracts a strictly bounded row sample for LLM formatting context."""
+    if df.empty:
+        return []
+    
+    # Replace NaN with None so it becomes a valid JSON null
+    head = df.head(n)
+    safe_df = head.astype(object).where(pd.notna(head), None)
+    return safe_df.to_dict(orient="records")
