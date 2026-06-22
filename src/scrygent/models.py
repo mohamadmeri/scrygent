@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field, model_validator
-
+from typing import Any 
 
 class Step(BaseModel):
     """
@@ -12,6 +12,10 @@ class Step(BaseModel):
     step_id: str = Field(
         description="Unique identifier for this step, used as the key in AgentState.step_outputs."
     )
+    reasoning: str = Field(
+        description="A brief explanation of WHY this step is placed here in the sequence. "
+        "Forces Chain of Thought before tool selection."
+    )
     action: Literal["tool", "sandbox"] = Field(
         description="Whether this step dispatches a Tier 1 tool or escalates to the Tier 2 sandbox."
     )
@@ -20,9 +24,10 @@ class Step(BaseModel):
         description="Name of the registered Tier 1 tool to call (e.g. 'analyze_data', "
         "'request_column_stats', 'correlation'). Required when action == 'tool'.",
     )
-    parameters: dict[str, str | int | float | bool | None] = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Typed keyword arguments passed to the tool dispatch. Unused for sandbox steps.",
+        description="Keyword arguments passed to the tool dispatch. Can include nested lists/dicts "
+        "depending on the tool schema. Unused for sandbox steps.",
     )
     instruction: str | None = Field(
         default=None,
