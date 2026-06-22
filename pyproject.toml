@@ -8,7 +8,10 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "datasets>=5.0.0",
     "pandas>=3.0.3",
+    "pyarrow>=24.0.0",
+    "pydantic>=2.13.4",
 ]
 
 [build-system]
@@ -17,5 +20,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
+    "kaggle>=2.2.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
 ]
