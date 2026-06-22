@@ -2,9 +2,8 @@ import pytest # noqa: F401
 from pathlib import Path
 from pydantic import ValidationError # noqa: F401
 
-from scrygent.state import AgentState
 from scrygent.models import (
-    CSVProfile, Plan, Step, AnalysisReport, DirectAnswer
+    CSVProfile, Plan, Step, AnalysisReport, DirectAnswer, AgentState
 )
 
 
@@ -113,7 +112,7 @@ class TestAgentStateExecution:
         )
         # Planner output: populate plan and set status to running
         state.plan = Plan(steps=[
-            Step(step_id="s1", action="tool", tool_name="analyze_data")
+            Step(step_id="s1", reasoning="Analyze data", action="tool", tool_name="analyze_data"),
         ])
         state.execution_status = "running"
         state.current_step_index = 0
@@ -131,7 +130,7 @@ class TestAgentStateExecution:
         )
         # Simulate step execution
         state.plan = Plan(steps=[
-            Step(step_id="s1", action="tool", tool_name="analyze_data"),
+            Step(step_id="s1", reasoning="Analyze data", action="tool", tool_name="analyze_data"),
         ])
         state.execution_status = "running"
         state.current_step_index = 0
@@ -155,7 +154,7 @@ class TestAgentStateExecution:
             user_query="Query",
         )
         state.plan = Plan(steps=[
-            Step(step_id="s1", action="tool", tool_name="analyze_data", required=True),
+           Step(step_id="s1", reasoning="Analyze data", action="tool", tool_name="analyze_data", required=True),
         ])
         state.execution_status = "running"
         state.retry_count = 2  # Max retries exhausted

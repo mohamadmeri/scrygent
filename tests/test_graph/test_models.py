@@ -12,13 +12,14 @@ class TestStep:
     def test_step_tool_action_requires_tool_name(self):
         """Tool steps must have tool_name."""
         with pytest.raises(ValidationError) as excinfo:
-            Step(step_id="step_1", action="tool", tool_name=None)
+            Step(step_id="step_1", reasoning="test", action="tool", tool_name=None)
         assert "tool_name is required" in str(excinfo.value)
 
     def test_step_tool_action_valid(self):
         """Tool step with all required fields is valid."""
         step = Step(
             step_id="step_1",
+            reasoning="Compute aggregate of sales column",
             action="tool",
             tool_name="analyze_data",
             parameters={"column": "sales", "agg": "sum"},
@@ -27,17 +28,19 @@ class TestStep:
         assert step.action == "tool"
         assert step.tool_name == "analyze_data"
         assert step.required is True
+        assert step.reasoning == "Compute aggregate of sales column"
 
     def test_step_sandbox_action_requires_instruction(self):
         """Sandbox steps must have instruction (never code)."""
         with pytest.raises(ValidationError) as excinfo:
-            Step(step_id="step_2", action="sandbox", instruction=None)
+            Step(step_id="step_2", reasoning="test", action="sandbox", instruction=None)
         assert "instruction is required" in str(excinfo.value)
 
     def test_step_sandbox_action_valid(self):
         """Sandbox step with instruction is valid."""
         step = Step(
             step_id="step_2",
+            reasoning="Compute percentile of normalized sales",
             action="sandbox",
             instruction="Calculate the 95th percentile of normalized sales.",
             required=False,
@@ -49,13 +52,19 @@ class TestStep:
 
     def test_step_default_required_is_true(self):
         """Step.required defaults to True."""
-        step = Step(step_id="step_1", action="tool", tool_name="analyze_data")
+        step = Step(
+            step_id="step_1",
+            reasoning="test",
+            action="tool",
+            tool_name="analyze_data",
+        )
         assert step.required is True
 
     def test_step_parameters_json_safe(self):
         """Parameters contain only JSON-safe primitives (str, int, float, bool, None)."""
         step = Step(
             step_id="step_1",
+            reasoning="Filter and aggregate sales data",
             action="tool",
             tool_name="analyze_data",
             parameters={
@@ -80,9 +89,18 @@ class TestPlan:
 
     def test_plan_ordered_steps(self):
         """Plan maintains step order for sequential execution."""
-        step1 = Step(step_id="s1", action="tool", tool_name="analyze_data")
-        step2 = Step(step_id="s2", action="sandbox", instruction="Calculate percentile.")
-        step3 = Step(step_id="s3", action="tool", tool_name="correlation")
+        step1 = Step(
+            step_id="s1", reasoning="First step", action="tool", tool_name="analyze_data"
+        )
+        step2 = Step(
+            step_id="s2",
+            reasoning="Second step",
+            action="sandbox",
+            instruction="Calculate percentile.",
+        )
+        step3 = Step(
+            step_id="s3", reasoning="Third step", action="tool", tool_name="correlation"
+        )
 
         plan = Plan(steps=[step1, step2, step3])
         assert len(plan.steps) == 3
@@ -93,12 +111,11 @@ class TestPlan:
     def test_plan_executor_uses_current_step_index(self):
         """Executor advances through plan using current_step_index pointer."""
         steps = [
-            Step(step_id="s1", action="tool", tool_name="analyze_data"),
-            Step(step_id="s2", action="tool", tool_name="correlation"),
+            Step(step_id="s1", reasoning="First", action="tool", tool_name="analyze_data"),
+            Step(step_id="s2", reasoning="Second", action="tool", tool_name="correlation"),
         ]
         plan = Plan(steps=steps)
 
-        # Simulate executor: current_step_index points to next step to execute
         for idx in range(len(plan.steps)):
             current_step = plan.steps[idx]
             assert current_step.step_id == f"s{idx + 1}"
@@ -129,7 +146,7 @@ class TestCSVProfile:
             },
             truncated=True,
         )
-        # Planner sees all 5 columns in global_schema, full metrics only for 'sales'
+
         assert len(profile.global_schema) == 5
         assert profile.global_schema["id"] == "int64"
         assert profile.global_schema["region"] == "object"
@@ -144,21 +161,22 @@ class TestCSVProfile:
             },
             truncated=True,
         )
-        # Demonstrates truncation: col_b and col_c excluded from detailed_stats
+
         assert len(profile.global_schema) == 3
         assert len(profile.detailed_stats) == 1
         assert "col_b" not in profile.detailed_stats
 
     def test_profile_row_sample_nans_replaced_with_none(self):
-        """3-row sample has NaN → None (JSON-serializable)."""
+        """3-row sample has NaN replaced with None (JSON-serializable)."""
         profile = CSVProfile(
             global_schema={"id": "int64", "value": "float64"},
             row_sample=[
                 {"id": 1, "value": 10.5},
-                {"id": 2, "value": None},  # NaN replaced with None
+                {"id": 2, "value": None},
                 {"id": 3, "value": 20.3},
             ],
         )
+
         assert len(profile.row_sample) == 3
         assert profile.row_sample[1]["value"] is None
 
@@ -177,8 +195,8 @@ class TestCSVProfile:
                 }
             },
         )
+
         for val in profile.detailed_stats["col"].values():
-            # Must be JSON-safe type, never NumPy native
             assert isinstance(val, (str, int, float, type(None)))
 
     def test_profile_truncated_flag_signals_partial_profiling(self):
@@ -307,6 +325,7 @@ class TestDirectAnswer:
         assert "answer" in fields
         assert ans.answer == "42"
 
+
 class TestModelConsistencyWithDocs:
     """Cross-validate all models against DESIGN.md and ARCHITECTURE.md."""
 
@@ -314,17 +333,19 @@ class TestModelConsistencyWithDocs:
         """Step includes all fields from ARCHITECTURE.md."""
         step = Step(
             step_id="s1",
+            reasoning="Cross-checking docs compliance",
             action="tool",
             tool_name="analyze_data",
             parameters={"col": "value"},
             required=True,
         )
-        # From docs: action, tool name, parameters, required flag, instruction
+
         assert hasattr(step, "action")
         assert hasattr(step, "tool_name")
         assert hasattr(step, "parameters")
         assert hasattr(step, "required")
         assert hasattr(step, "instruction")
+        assert hasattr(step, "reasoning")
 
     def test_csv_profile_implements_two_level_design(self):
         """CSVProfile implements two-level profiling from DESIGN.md."""
@@ -333,7 +354,6 @@ class TestModelConsistencyWithDocs:
             detailed_stats={"col_a": {"dtype": "int64", "mean": 50}},
             truncated=True,
         )
-        # From docs: global_schema, detailed_stats, 3-row sample, truncated flag
         assert hasattr(profile, "global_schema")
         assert hasattr(profile, "detailed_stats")
         assert hasattr(profile, "row_sample")
@@ -341,11 +361,9 @@ class TestModelConsistencyWithDocs:
 
     def test_analysis_report_enforces_primary_answer_design(self):
         """AnalysisReport enforces primary_answer-first isolation from ARCHITECTURE.md."""
-        # Primary answer is required
         with pytest.raises(ValidationError):
             AnalysisReport()  # type: ignore
 
-        # With primary answer, additional_insights are optional
         report = AnalysisReport(primary_answer="Answer.")
         assert report.primary_answer == "Answer."
 
@@ -365,6 +383,7 @@ class TestModelSerialization:
         """Step serializes and deserializes without loss."""
         step = Step(
             step_id="s1",
+            reasoning="Serialization test",
             action="tool",
             tool_name="analyze_data",
             parameters={"col": "sales", "val": 100},
@@ -378,8 +397,13 @@ class TestModelSerialization:
     def test_plan_json_roundtrip(self):
         """Plan with multiple steps serializes cleanly."""
         plan = Plan(steps=[
-            Step(step_id="s1", action="tool", tool_name="analyze_data"),
-            Step(step_id="s2", action="sandbox", instruction="Calculate percentile."),
+            Step(step_id="s1", reasoning="First", action="tool", tool_name="analyze_data"),
+            Step(
+                step_id="s2",
+                reasoning="Second",
+                action="sandbox",
+                instruction="Calculate percentile.",
+            ),
         ])
         json_str = plan.model_dump_json()
         restored = Plan.model_validate_json(json_str)

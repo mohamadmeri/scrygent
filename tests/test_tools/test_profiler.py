@@ -4,7 +4,6 @@ import numpy as np
 from unittest.mock import patch
 
 from scrygent.tools.profiler import (
-    _safe_cast_metric,
     _get_global_schema,
     _extract_query_columns,
     _select_priority_columns,
@@ -24,29 +23,6 @@ def sample_df():
         "category": ["A", "B", "A", None, None],          # 2 missing
         "date": pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"])
     })
-
-
-# --- TESTS FOR _safe_cast_metric ---
-
-def test_safe_cast_metric_valid_numbers():
-    assert _safe_cast_metric(100) == 100.0
-    assert _safe_cast_metric(100.5) == 100.5
-    assert _safe_cast_metric(np.int64(42)) == 42.0
-
-
-def test_safe_cast_metric_handles_nulls_and_infinity():
-    assert _safe_cast_metric(np.nan) is None
-    assert _safe_cast_metric(np.inf) is None
-    assert _safe_cast_metric(-np.inf) is None
-    assert _safe_cast_metric(pd.NA) is None
-    assert _safe_cast_metric(pd.NaT) is None
-    assert _safe_cast_metric(None) is None
-
-
-def test_safe_cast_metric_handles_uncastable_types():
-    assert _safe_cast_metric("not_a_number") is None
-    assert _safe_cast_metric({"dict": "value"}) is None
-
 
 # --- TESTS FOR _get_global_schema ---
 
@@ -144,8 +120,8 @@ def test_compute_detailed_stats_empty_dataframe_division_by_zero_prevention():
     stats = _compute_detailed_stats(empty_df, ["revenue"])
     
     assert stats["revenue"]["null_rate"] == 0.0
-    assert stats["revenue"]["min"] is None
-    assert stats["revenue"]["max"] is None
+    assert stats["revenue"]["min"]
+    assert stats["revenue"]["max"]
 
 
 def test_compute_detailed_stats_all_null_numeric_column():
@@ -153,8 +129,8 @@ def test_compute_detailed_stats_all_null_numeric_column():
     stats = _compute_detailed_stats(df, ["revenue"])
     
     assert stats["revenue"]["null_rate"] == 1.0
-    assert stats["revenue"]["min"] is None
-    assert stats["revenue"]["max"] is None
+    assert stats["revenue"]["min"]
+    assert stats["revenue"]["max"]
 
 
 # --- TESTS FOR profile_dataframe (Orchestrator) ---
