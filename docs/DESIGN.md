@@ -61,7 +61,7 @@ All Tier 1 tools:
 - Accept typed parameters (column names, operations, filters).
 - Return small, structured `dict`/`list` — never DataFrames.
 - Are implemented in pure Pandas/NumPy/SciPy — no LLM-generated code runs.
-- Apply `_safe_cast_metric` to strip all `np.nan`, `np.inf`, `np.int64`, and other Pandas native C-types before returning, ensuring JSON-safe output that the Groq API can parse without 400 errors.
+- Return raw values freely — JSON sanitization is handled automatically by `ScrygentBaseModel`'s recursive `@model_validator` at the model boundary, not inside individual tool functions.
 
 **Guarantee:** All numbers in reports produced via Tier 1 come from auditable functions. Zero hallucination.
 
@@ -96,9 +96,9 @@ When active locally, the sandbox runs LLM-generated Pandas code in a restricted 
    - `global_schema`: name and dtype for every column in the CSV, always complete.
    - `detailed_stats`: full statistical metrics for columns matched by a **strict whole-word regex** against the user query (pattern: `(?<!\w)<column_name>(?!\w)`) plus the top 15 most populated numerical/categorical columns. The strict regex replaces the original substring `in` check, preventing false positives (e.g., a column named `id` matching the word `dividend`).
    - A 3-row data sample with `None` substituted for NaN cells (via `.where(pd.notna(df), None)`) for format inference.
-   - All metrics are passed through `_safe_cast_metric` before storage.
+   - All metrics are sanitized automatically by `ScrygentBaseModel`'s recursive validator when the `CSVProfile` is instantiated.
 
-2. **Planner Node (LLM):** Receives the user query and the full `CSVProfile` (both levels). The Planner sees the complete `global_schema`, so it is never blind to column existence. If it determines that detailed stats are needed for columns not in `detailed_stats`, it plans a `request_column_stats` step. Outputs a `Plan` (Pydantic list of `Step` objects). Sets `execution_status` to `"running"`.
+2. **Planner Node (LLM):** Receives the user query and the full `CSVProfile` (both levels). The Planner sees the complete `global_schema`, so it is never blind to column existence. If it determines that detailed stats are needed for columns not in `detailed_stats`, it plans a `request_column_stats` step. Outputs a `Plan` (Pydantic list of `Step` objects). Each `Step` includes a `reasoning` field the LLM must populate before generating the tool name and parameters — a chain-of-thought constraint that improves planning quality and makes plans inspectable. Sets `execution_status` to `"running"`.
 
 3. **Executor Node (hybrid node):** Pops the next step. The Executor dispatches deterministic Tier 1 tools *and* runs LLM chains internally (`correction_chain`, `code_writer_chain`). It is not a purely deterministic dispatcher.
    - **Tool step:** calls the registered Tier 1 tool with step parameters. On Pydantic validation failure, the internal `correction_chain` (LLM prompt with bad params + schema + error) runs a localised correction, max 2 retries. This is a Python-level loop inside the node function, not a LangGraph graph edge.
@@ -141,32 +141,37 @@ scrygent/
 ├── .streamlit/
 │   └── secrets.toml
 ├── src/
-│   ├── __init__.py
-│   ├── state.py
-│   ├── models.py
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── io.py
-│   │   ├── profiler.py
-│   │   ├── analyze_data.py       # Unified declarative tool (filter/group/agg/sort/top-N)
-│   │   ├── column_stats.py       # request_column_stats (lazy fetch)
-│   │   ├── statistics.py         # correlation, linear_regression, trend_detection, histogram_data
-│   │   ├── wrangling.py          # fill_missing, cast_column_type, normalize_column,
-│   │   │                         #   create_derived_column, date_extract, string_filter
-│   │   ├── outliers.py
-│   │   └── visualization.py
-│   ├── sandbox/
-│   │   ├── __init__.py
-│   │   └── executor.py
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── profiler_node.py
-│   │   ├── planner_node.py
-│   │   ├── executor_node.py
-│   │   └── reporter_node.py
-│   └── graph/
+│   └── scrygent/
 │       ├── __init__.py
-│       └── builder.py
+│       ├── models/
+│       │   ├── __init__.py          # Re-exports everything; keeps import paths clean
+│       │   ├── base_model.py        # ScrygentBaseModel with recursive sanitizer
+│       │   ├── schemas.py           # Plan, Step, CSVProfile, AnalysisReport, etc.
+│       │   └── state.py             # AgentState
+│       ├── tools/
+│       │   ├── __init__.py
+│       │   ├── io.py
+│       │   ├── profiler.py
+│       │   ├── analyze_data.py       # Unified declarative tool (filter/group/agg/sort/top-N)
+│       │   ├── column_stats.py       # request_column_stats (lazy fetch)
+│       │   ├── statistics.py         # correlation, linear_regression, trend_detection, histogram_data
+│       │   ├── wrangling.py          # fill_missing, cast_column_type, normalize_column,
+│       │   │                         #   create_derived_column, date_extract, string_filter,
+│       │   │                         #   filter_dataset, reset_dataset
+│       │   ├── outliers.py
+│       │   └── visualization.py
+│       ├── sandbox/
+│       │   ├── __init__.py
+│       │   └── executor.py
+│       ├── agents/
+│       │   ├── __init__.py
+│       │   ├── profiler_node.py
+│       │   ├── planner_node.py
+│       │   ├── executor_node.py
+│       │   └── reporter_node.py
+│       └── graph/
+│           ├── __init__.py
+│           └── builder.py
 ├── data/                        # Git-ignored. Local benchmarking only — never commit.
 │   ├── dabench/                 #   InfiAgent-DABench CSVs and question files
 │   ├── databench_lite/          #   HuggingFace DataBench Lite (auto-downloaded)
@@ -185,16 +190,16 @@ scrygent/
 
 ## Tool Suite Reference (Tier 1)
 
-All tools are pure functions in `src/tools/`. They never call the LLM. All return values are JSON-safe (no Pandas/NumPy native types).
+All tools are pure functions in `src/scrygent/tools/`. They never call the LLM. All return values are sanitized automatically by `ScrygentBaseModel` at the model boundary.
 
 | Tool File | Key Functions | Purpose |
 |---|---|---|
 | `io.py` | `load_csv`, `get_column_sample` | Safe CSV loading with strict error chaining; 3-row sample with `None` for NaN cells |
-| `profiler.py` | `profile_dataframe`, `_safe_cast_metric` | Two-level profile (`global_schema` + `detailed_stats`); scrubs all non-JSON-safe types |
+| `profiler.py` | `profile_dataframe` | Two-level profile (`global_schema` + `detailed_stats`); sanitization handled by `ScrygentBaseModel` at the model boundary |
 | `analyze_data.py` | `analyze_data` | **Unified declarative tool.** Accepts filter conditions, group-by columns, aggregation operation, sort direction, and top-N limit in a single call. Returns a scalar or structured dict. Covers 90%+ of DABench aggregation and query questions. |
 | `column_stats.py` | `request_column_stats` | Lazy fetch: computes full statistical metrics for a named column on demand. Called during execution when the Planner determines the profiler's truncated set was insufficient. |
 | `statistics.py` | `correlation`, `linear_regression`, `trend_detection`, `histogram_data`, `arithmetic` | Targeted statistical operations not covered by `analyze_data`. `arithmetic` uses `asteval`/`numexpr` exclusively. |
-| `wrangling.py` | `fill_missing`, `cast_column_type`, `normalize_column`, `create_derived_column`, `date_extract`, `string_filter` | Data preparation. Transforming tools write a new temporary CSV, return its path, and the Executor updates `csv_path` in state. |
+| `wrangling.py` | `fill_missing`, `cast_column_type`, `normalize_column`, `create_derived_column`, `date_extract`, `string_filter`, `filter_dataset`, `reset_dataset` | Data preparation and multi-step composition. Transforming tools write a new temporary CSV and return its path; the Executor updates `current_csv_path` in state. `filter_dataset` and `reset_dataset` are the enabling tools for the multi-step composition pattern. |
 | `outliers.py` | `detect_outliers` (zscore, iqr) | Outlier detection with configurable method |
 | `visualization.py` | `generate_plot` | Generates graphs, saves to disk, returns file paths and metadata. Plots are never base64-encoded into state. |
 
@@ -202,7 +207,7 @@ All tools are pure functions in `src/tools/`. They never call the LLM. All retur
 The unified declarative tool. Parameters: `column` (target), `filter_col`/`filter_op`/`filter_val` (optional row filter), `group_by` (optional grouping column), `agg` (operation: `mean`, `sum`, `count`, `min`, `max`, `median`, `std`), `sort_by`/`sort_dir` (optional sort), `top_n` (optional limit). Performs the full operation internally in a single Pandas chain and returns a clean scalar or dict. This eliminates the DataFrame-passing anti-pattern that would arise from chaining separate filter → aggregate tools.
 
 **Key tool detail – `request_column_stats`:**
-Lazy fetch for column details. Takes a column name, reads the CSV at `csv_path`, and returns the same statistical summary `profile_dataframe` would have generated for that column. Allows the Planner to request on-demand profiling without re-running the entire profiler node.
+Lazy fetch for column details. Takes a column name, reads the CSV at `current_csv_path`, and returns the same statistical summary `profile_dataframe` would have generated for that column. Allows the Planner to request on-demand profiling without re-running the entire profiler node.
 
 **Key tool detail – `arithmetic`:**
 Safely evaluates basic mathematical expressions (e.g., `"a / b"`) with provided scalar variables. Relies exclusively on `asteval` or `numexpr`.
@@ -215,6 +220,12 @@ Accepts a date column and an extraction target (year, month, day, weekday). Also
 
 **Key tool detail – `string_filter`:**
 Filters rows where a string column satisfies a condition (contains, starts_with, ends_with, equals, not_equals). Case-insensitive by default. Returns a filtered row count and sample as a structured dict. Does not return a DataFrame.
+
+**Key tool detail – `filter_dataset`:**
+The primary enabler of the multi-step composition pattern. Filters the dataset at `current_csv_path` by a condition on one column (equals, greater_than, less_than, contains), writes the filtered rows to a new temporary CSV, and returns the new path alongside a row count. The Executor then updates `current_csv_path` in `AgentState` to point to the filtered file. All subsequent tool calls in the plan naturally operate on the filtered subset without any cross-tool DataFrame passing. This is the mechanism that eliminates the need for Tier 2 escalation on filter-then-compute questions.
+
+**Key tool detail – `reset_dataset`:**
+Reverts `current_csv_path` in `AgentState` back to `original_csv_path`. Returns a confirmation dict. Allows the Planner to compare multiple filtered subsets within a single plan: run analysis on subset A, call `reset_dataset`, then `filter_dataset` for subset B, then run analysis on subset B. The original upload is never lost.
 
 ---
 
@@ -258,12 +269,19 @@ Every `Step` carries a mandatory `required: bool` field (defaulting to `True`).
 
 ## JSON Serialization
 
-Pandas operations produce Pandas/NumPy native C-types (`np.nan`, `np.inf`, `np.int64`, `np.float32`, etc.) that violate strict JSON specifications. Passing them raw into LangGraph state causes the downstream Groq API to throw 400 Bad Request errors.
+Pandas operations produce native C-types (`np.nan`, `np.inf`, `np.int64`, `pd.Timestamp`, etc.) that violate strict JSON specifications. Passing them raw into LangGraph state causes the downstream Groq API to throw 400 Bad Request errors.
 
-**Mitigations applied at every tool boundary:**
+**How this is handled — `ScrygentBaseModel`:**
 
-- `_safe_cast_metric(value)` — a helper in `profiler.py` that converts: `np.nan` → `None`, `np.inf`/`-np.inf` → `None`, `np.integer` subclasses → `int`, `np.floating` subclasses → `float`. Applied to every metric before it enters state.
-- Row samples from `get_column_sample` replace NaN cells with `None` via `.where(pd.notna(df), None)` before calling `.to_dict(orient="records")`.
+All Pydantic models in the system inherit from `ScrygentBaseModel` (`src/scrygent/models/base_model.py`), which applies a `@model_validator(mode="before")` that recursively sanitizes all input data before field validation runs:
+
+- `np.integer` subclasses → `int`
+- `np.floating` subclasses → `float`
+- `np.nan`, `np.inf`, `-np.inf` → `None`
+- `pd.Timestamp` → ISO-8601 string
+- Nested dicts and lists cleaned recursively
+
+No manual casting is required in tools. Any raw Pandas or NumPy value assigned to a model field is sanitized automatically at the model boundary. Row samples from `get_column_sample` additionally replace NaN cells with `None` via `.where(pd.notna(df), None)` before calling `.to_dict(orient="records")`, since these pass through a plain `list[dict]` rather than a model field.
 
 ---
 
@@ -288,9 +306,9 @@ Instead, `app.py` caches the entire final `AnalysisReport` (and the full `AgentS
 | Layer | Approach |
 |---|---|
 | Unit tests | Every tool function tested with known DataFrames |
-| JSON safety tests | Verify `_safe_cast_metric` converts all Pandas native types correctly |
+| JSON safety tests | Verify `ScrygentBaseModel._recursive_sanitize` converts `np.int64` → `int`, `np.nan`/`np.inf` → `None`, `pd.Timestamp` → ISO-8601 string, and cleans nested structures |
 | Node tests | Planner, executor, and reporter tested with mocked LLM responses |
-| Routing tests | Conditional router tested for all three `execution_status` values |
+| Routing tests | Conditional router tested for all four `execution_status` values: `"pending"`, `"running"`, `"aborted"`, `"complete"` |
 | Integration tests | Full graph run with a sample CSV, asserting `primary_answer` populated and `AnalysisReport` valid |
 | Security tests | Verify `execute_python` rejects forbidden imports and times out; verify `DISABLE_SANDBOX=true` skips sandbox steps gracefully |
 | CI | Pytest runs on every push via `uv run pytest` |
@@ -301,18 +319,36 @@ Instead, `app.py` caches the entire final `AnalysisReport` (and the full `AgentS
 
 - Streamlit Cloud handles deployment and reads `pyproject.toml` for dependencies.
 - `uv` and `uv.lock` are used for fast, deterministic local development. Streamlit Cloud installs via standard `pip`.
-- **Pandas 3.x is required.** The tool suite and profiler rely on Pandas 3.x strict C-type array behavior (no implicit upcasting of string columns into float, `LossySetitemError` on type-unsafe assignments). Running on Pandas 2.x or 1.x will cause silent behavioral differences in `profiler.py` type inference and may cause the data-poisoning robustness tests to pass incorrectly. Pin `pandas>=3.0` in `pyproject.toml`.
+- **Pandas 3.x is required.** The tool suite and profiler rely on Pandas 3.x strict C-type array behavior (no implicit upcasting of string columns into float, `LossySetitemError` on type-unsafe assignments). Running on Pandas 2.x or 1.x will cause silent behavioral differences in `profiler.py` type inference and may cause the data-poisoning robustness tests to pass incorrectly. Pin `pandas>=3.0` in `pyproject.toml`. Note also that `io.py` uses `.where(pd.notna(df), None)` for NaN replacement in row samples — `.fillna(None)` is deprecated in Pandas 3.x and will raise a warning; the `.where()` form is the correct replacement.
 - `GROQ_API_KEY` and `DISABLE_SANDBOX=true` are both set in the Streamlit Cloud dashboard secrets/environment.
 - The entire `graph.invoke` result is cached in `st.session_state` after each run; no rerenders trigger a re-invocation.
 - Temporary files (plots, intermediate wrangling CSVs) are cleaned by Streamlit's container session lifecycle.
 
 ---
 
-## Known Limitations & Open Design Questions
+## Multi-Step Composition Pattern
 
-**Filter + correlate gap:** `analyze_data` handles filter/aggregate in one pass and returns a scalar or dict. If a question requires filtering rows and then computing a cross-column correlation on the filtered subset, no single Tier 1 tool covers the combined operation. On public deployment (sandbox disabled), such queries fail gracefully. On local deployment, the Planner can route to the sandbox.
+Complex analytical questions that appear to require a single combined operation are handled by the Plan-and-Execute architecture natively — no Tier 2 sandbox escalation needed. The Planner decomposes the question into sequential steps; the `current_csv_path` / `original_csv_path` split in state is the mechanism that makes this work.
 
-**Wrangling tool chaining:** Wrangling steps that produce a transformed dataset write a new temporary CSV and update `csv_path` in state. All subsequent tool calls read from the updated path. The original CSV becomes inaccessible after a wrangling step. If a plan needs both pre- and post-transformation values, the Planner must schedule the pre-transformation tool calls first.
+**How it works — filter then correlate:**
+
+1. The Planner schedules a `filter_dataset` step. The Executor runs it, writes a filtered CSV to disk, and updates `current_csv_path`.
+2. The Planner schedules a `correlation` step. The Executor reads from `current_csv_path`, which now points to the filtered subset. The correlation runs on the right data.
+
+No cross-tool DataFrame passing. No sandbox. The stateless-tools rule holds throughout.
+
+**How it works — multiple filtered subsets:**
+
+1. Schedule all steps that need the original data first.
+2. Schedule `filter_dataset` — `current_csv_path` now points to subset A.
+3. Schedule analysis steps on subset A.
+4. Schedule `reset_dataset` — `current_csv_path` reverts to `original_csv_path`.
+5. Schedule `filter_dataset` again — `current_csv_path` now points to subset B.
+6. Schedule analysis steps on subset B.
+
+**Why this is the right design**
+
+The LLM's job is to write a plan, not to write code. Giving it `filter_dataset` and `reset_dataset` as tools lets it express a complex multi-stage analysis as a sequence of declarative steps. The architecture does the rest. This is the Plan-and-Execute pattern working as intended.
 
 ---
 
