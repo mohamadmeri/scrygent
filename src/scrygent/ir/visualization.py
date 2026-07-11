@@ -1,3 +1,9 @@
+"""Intermediate Representation for data visualization operations.
+
+Defines the strict payload for generating plots, enforcing column-count
+arity constraints at the schema boundary before execution.
+"""
+
 from pydantic import Field, model_validator
 
 from ..base_model import ScrygentBaseModel
@@ -5,24 +11,23 @@ from ..contracts import PlotType
 
 _SINGLE_COLUMN = {PlotType.HISTOGRAM, PlotType.BOX}
 _PAIR_COLUMN = {PlotType.BAR, PlotType.LINE, PlotType.SCATTER}
-# heatmap: 2+ columns, checked separately (open-ended, not a fixed arity)
 
 
 class PlotParams(ScrygentBaseModel):
+    """IR for generating data visualizations.
+
+    Enforces column-count arity per plot_type at the schema level.
+    Whether the named columns exist in the dataset is validated later
+    during tool execution.
     """
-    Column-count arity per plot_type is enforced here, at the IR level --
-    it's fully determined by plot_type and len(columns) alone, with no
-    dataset access required, so it belongs with the rest of Pydantic's
-    structural checks rather than deferred to generate_plot. Whether the
-    *named* columns exist in the dataset remains a tool-level (Type B)
-    check, since that needs the schema.
-    """
-    plot_type: PlotType
-    columns: list[str] = Field(min_length=1)
-    title: str | None = Field(default=None)
+
+    plot_type: PlotType = Field(description="The type of chart to generate.")
+    columns: list[str] = Field(min_length=1, description="The columns to plot.")
+    title: str | None = Field(default=None, description="Optional title for the plot.")
 
     @model_validator(mode="after")
     def _arity_matches_plot_type(self) -> "PlotParams":
+        """Validates that the number of columns matches the plot type requirements."""
         n = len(self.columns)
 
         if self.plot_type in _SINGLE_COLUMN and n != 1:

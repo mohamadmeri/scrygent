@@ -1,39 +1,59 @@
+"""Intermediate Representation for the unified analytical query engine.
+
+This module defines the strict Pydantic schema for the `analyze_data` tool,
+which consolidates filtering, grouping, aggregation, sorting, and limiting
+into a single declarative payload.
+"""
+
 from typing import Literal
 
 from pydantic import Field, model_validator
 
-from .filtering import FilterCondition
 from ..base_model import ScrygentBaseModel
 from ..contracts import Aggregation
+from .filtering import FilterCondition
 
 
 class Metric(ScrygentBaseModel):
+    """Defines a single mathematical aggregation to compute."""
+
     column: str = Field(min_length=1, description="The exact name of the column to aggregate.")
-    aggregation: Aggregation
-    alias: str = Field(min_length=1, description="Name for the output key (e.g., 'Total Sales').")
+    aggregation: Aggregation = Field(description="The aggregation operation to apply.")
+    alias: str = Field(min_length=1, description="The output key name for the computed metric.")
 
 
 class SortCondition(ScrygentBaseModel):
-    column: str = Field(min_length=1, description="Column or metric alias to sort by.")
-    direction: Literal["asc", "desc"]
+    """Defines the sorting criteria for the final aggregated output."""
+
+    column: str = Field(min_length=1, description="The column or metric alias to sort by.")
+    direction: Literal["asc", "desc"] = Field(description="The sort direction.")
 
 
 class AnalyzeDataParams(ScrygentBaseModel):
-    """IR for analyze_data. Filter -> Group -> Aggregate -> Sort -> Limit."""
-    filters: list[FilterCondition] | None = Field(default=None)
-    group_by: list[str] | None = Field(default=None, description="Columns to GROUP BY.")
+    """IR for the unified analytical query tool.
+
+    Enforces the execution pipeline: Filter -> Group -> Aggregate -> Sort -> Limit.
+    """
+
+    filters: list[FilterCondition] | None = Field(default=None, description="Row-level filtering conditions.")
+    group_by: list[str] | None = Field(default=None, description="Columns to group the data by.")
     metrics: list[Metric] = Field(min_length=1, description="The mathematical aggregations to compute.")
-    sort: SortCondition | None = Field(default=None)
-    limit: int | None = Field(default=None, ge=1)
+    sort: SortCondition | None = Field(default=None, description="Optional sorting applied to the aggregated result.")
+    limit: int | None = Field(default=None, ge=1, description="Optional row limit applied after sorting.")
 
     @model_validator(mode="after")
     def _aliases_unique_and_sort_resolvable(self) -> "AnalyzeDataParams":
+        """Validates that metric aliases are unique and the sort target is resolvable.
+
+        Prevents silent collisions in the output record and ensures the sort
+        column references a valid metric alias or group-by column.
+        """
         aliases = [m.alias for m in self.metrics]
         if len(aliases) != len(set(aliases)):
             dupes = sorted({a for a in aliases if aliases.count(a) > 1})
             raise ValueError(
                 f"Duplicate metric alias(es): {dupes}. Each metric's alias must be "
-                "unique -- duplicates silently collide in the output record."
+                "unique to prevent silent collisions in the output record."
             )
 
         if self.sort is not None:

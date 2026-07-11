@@ -1,18 +1,11 @@
-"""Shared filter-operator vocabulary and condition shapes. Consumed by
-analyze_data's AnalyzeDataParams.filters and wrangling's
-FilterDatasetParams.filters -- both tools filter on the same operator
-set, so it's defined once here rather than owned by either tool family.
+"""Shared filter-operator vocabulary and condition shapes for the IR layer.
 
-FilterCondition is a discriminated union, not a single model. Each
-FilterOperator implies a specific value shape (scalar comparison, list
-membership, or string matching), and a flat `value: Any` field let any
-operator pair with any value type -- e.g. operator=">" with a list
-value -- passing Pydantic cleanly and failing later inside the tool as
-an unlabeled TypeError. Tagging on operator group makes that
-combination unrepresentable instead of merely unlikely.
+This module defines the discriminated union for row-level filtering.
+Consumed by analyze_data and filter_dataset, it ensures that the
+operator and value shape are strictly aligned at the schema boundary.
 """
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import Discriminator, Field, Tag
 
@@ -32,29 +25,37 @@ _STRING_OPS = (FilterOperator.CONTAINS, FilterOperator.STARTSWITH, FilterOperato
 
 
 class ScalarFilterCondition(ScrygentBaseModel):
-    """==, !=, >, <, >=, <= -- compares a column against one scalar."""
-    column: str = Field(min_length=1)
-    operator: Literal[_SCALAR_OPS] # type: ignore
-    value: str | int | float | bool
+    """Filter condition for scalar comparisons (==, !=, >, <, >=, <=)."""
+
+    column: str = Field(min_length=1, description="The column to filter.")
+    operator: Literal[_SCALAR_OPS] = Field(description="The scalar comparison operator.")  # type: ignore
+    value: str | int | float | bool = Field(description="The scalar value to compare against.")
 
 
 class ListFilterCondition(ScrygentBaseModel):
-    """in, not in -- tests column membership against a non-empty list."""
-    column: str = Field(min_length=1)
-    operator: Literal[_LIST_OPS] # type: ignore
-    value: list[str | int | float | bool] = Field(min_length=1)
+    """Filter condition for list membership (in, not in)."""
+
+    column: str = Field(min_length=1, description="The column to filter.")
+    operator: Literal[_LIST_OPS] = Field(description="The list membership operator.")  # type: ignore
+    value: list[str | int | float | bool] = Field(
+        min_length=1, description="The list of values to test membership against."
+    )
 
 
 class StringFilterCondition(ScrygentBaseModel):
-    """contains, startswith, endswith -- string ops need a non-empty string."""
-    column: str = Field(min_length=1)
-    operator: Literal[_STRING_OPS] # type: ignore
-    value: str = Field(min_length=1)
+    """Filter condition for string matching (contains, startswith, endswith)."""
+
+    column: str = Field(min_length=1, description="The column to filter.")
+    operator: Literal[_STRING_OPS] = Field(description="The string matching operator.")  # type: ignore
+    value: str = Field(min_length=1, description="The string pattern to match.")
 
 
 def _filter_tag(v: Any) -> str:
-    """Routes each payload to its shape based on operator, before the
-    per-branch models validate value type/shape."""
+    """Routes each filter payload to its specific shape based on the operator.
+
+    This discriminator function ensures that the Pydantic validator selects
+    the correct branch model before validating the value type and shape.
+    """
     op = v.get("operator") if isinstance(v, dict) else getattr(v, "operator", None)
     if op in _SCALAR_OPS:
         return "scalar"
@@ -63,16 +64,13 @@ def _filter_tag(v: Any) -> str:
     if op in _STRING_OPS:
         return "string"
     raise ValueError(
-        f"Unrecognized filter operator: {op!r}. "
-        f"Expected one of: {sorted(m.value for m in FilterOperator)}."
+        f"Unrecognized filter operator: {op!r}. Expected one of: {sorted(m.value for m in FilterOperator)}."
     )
 
 
 FilterCondition = Annotated[
-    Union[
-        Annotated[ScalarFilterCondition, Tag("scalar")],
-        Annotated[ListFilterCondition, Tag("list")],
-        Annotated[StringFilterCondition, Tag("string")],
-    ],
+    Annotated[ScalarFilterCondition, Tag("scalar")]
+    | Annotated[ListFilterCondition, Tag("list")]
+    | Annotated[StringFilterCondition, Tag("string")],
     Discriminator(_filter_tag),
 ]
