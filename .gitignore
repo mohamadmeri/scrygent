@@ -35,3 +35,7 @@ Thumbs.db
 data/
 
 .vscode/
+
+.hypothesis
+
+planner_debug.json
