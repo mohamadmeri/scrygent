@@ -1,8 +1,10 @@
 """Shared row-filtering engine. Used by analyze_data.py (Tier 1 query
 engine) and wrangling.py (filter_dataset). One filter grammar, one
-implementation -- both callers stay behaviorally identical by construction."""
+implementation -- both callers stay behaviorally identical by construction.
+"""
 
 from typing import Any
+
 import pandas as pd
 
 from ...contracts import FilterOperator
@@ -21,8 +23,7 @@ def apply_filters(df: pd.DataFrame, filters: list[dict[str, Any]]) -> pd.DataFra
             op = FilterOperator(raw_op)
         except ValueError:
             raise ValueError(
-                f"Unsupported filter operator: '{raw_op}'. "
-                f"Choose from: {[o.value for o in FilterOperator]}"
+                f"Unsupported filter operator: '{raw_op}'. Choose from: {[o.value for o in FilterOperator]}"
             ) from None
         val = f["value"]
 

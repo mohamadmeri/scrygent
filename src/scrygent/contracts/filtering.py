@@ -1,12 +1,16 @@
-"""Shared filter-operator vocabulary. Consumed by analyze_data's
-AnalyzeDataParams.filters and wrangling's FilterDatasetParams.filters --
-both tools filter on the same operator set, so it's defined once here
-rather than owned by either tool family."""
+"""Shared filter-operator vocabulary for the compiler pipeline.
+
+This module defines the closed set of comparison operators used by both
+the analytical query engine and the data wrangling tools. Centralizing
+these operators ensures strict schema alignment across filtering contexts.
+"""
 
 from enum import StrEnum
 
 
 class FilterOperator(StrEnum):
+    """Supported comparison operators for row-level filtering."""
+
     EQ = "=="
     NEQ = "!="
     GT = ">"

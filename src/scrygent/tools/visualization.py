@@ -1,19 +1,21 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from .io import load_csv, write_temp_file
 from ..contracts.visualization import PlotType
+from .io import load_csv, write_temp_file
 
 logger = logging.getLogger(__name__)
 
-# Maximum number of categories to display in bar plots 
+# Maximum number of categories to display in bar plots
 MAX_CATEGORIES = 25
 
 
@@ -113,8 +115,7 @@ def generate_plot(
         plot_type = PlotType(plot_type)
     except ValueError:
         raise ValueError(
-            f"Unsupported plot type '{raw_plot_type}'. "
-            f"Choose from: {sorted(SUPPORTED_PLOT_TYPES)}"
+            f"Unsupported plot type '{raw_plot_type}'. Choose from: {sorted(SUPPORTED_PLOT_TYPES)}"
         ) from None
 
     if not columns:

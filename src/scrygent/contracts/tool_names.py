@@ -1,7 +1,16 @@
+"""Closed vocabulary for all deterministic tool identifiers.
+
+This module defines the exact string literals used by the Planner to
+route execution steps to the deterministic compiler. The LLM must emit
+these exact values to trigger tool dispatch.
+"""
+
 from enum import StrEnum
 
 
 class ToolName(StrEnum):
+    """Registered identifiers for the deterministic execution engine."""
+
     ANALYZE_DATA = "analyze_data"
     FILTER_DATASET = "filter_dataset"
     NORMALIZE_COLUMN = "normalize_column"

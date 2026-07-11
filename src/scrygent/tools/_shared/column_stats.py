@@ -1,9 +1,11 @@
 """Shared per-column statistics engine. Used by profiler.py (initial
 profiling of priority columns) and statistics.py (request_column_stats
 lazy fetch). Ensures a lazily-fetched column has an identical stat shape
-to one profiled up front -- the Planner can't tell the two paths apart."""
+to one profiled up front -- the Planner can't tell the two paths apart.
+"""
 
 from typing import Any
+
 import pandas as pd
 
 
@@ -28,16 +30,16 @@ def compute_detailed_stats(df: pd.DataFrame, target_columns: list[str]) -> dict[
         col_data = df[col]
         null_count = int(col_data.isnull().sum())
         unique_count = _to_python_scalar(col_data.nunique())
-        
+
         col_stats = {
             "dtype": str(col_data.dtype),
             "null_rate": round(null_count / total_rows, 4) if total_rows > 0 else 0.0,
-            "unique_count": unique_count
+            "unique_count": unique_count,
         }
 
         if pd.api.types.is_numeric_dtype(col_data):
-            col_stats["min"] =  _normalize_number(col_data.min())
-            col_stats["max"] =  _normalize_number(col_data.max())
+            col_stats["min"] = _normalize_number(col_data.min())
+            col_stats["max"] = _normalize_number(col_data.max())
             col_stats["mean"] = _normalize_number(col_data.mean())
 
         stats[str(col)] = col_stats

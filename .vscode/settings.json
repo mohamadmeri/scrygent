@@ -1,0 +1,15 @@
+{
+  "cSpell.words": [
+    "scrygent"
+  ],
+    "python.analysis.typeCheckingMode": "basic",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+            "source.fixAll.ruff": "explicit"
+        }
+    },
+    "ruff.configuration": "ruff.toml"
+}

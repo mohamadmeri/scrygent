@@ -1,14 +1,15 @@
 import logging
+from collections.abc import Callable
+from itertools import combinations
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
-from itertools import combinations
-from typing import Any, Callable
-from pathlib import Path
-
-from .io import load_csv
+from ..contracts.statistics import CorrelationMethod, OutlierMethod, RegressionMethod
 from ._shared.column_stats import compute_detailed_stats
-from ..contracts.statistics import CorrelationMethod, RegressionMethod, OutlierMethod
+from .io import load_csv
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,7 @@ def correlation(
         method = CorrelationMethod(method)
     except ValueError:
         raise ValueError(
-            f"Unsupported correlation method '{raw_method}'. "
-            f"Choose from: {sorted(m.value for m in CorrelationMethod)}"
+            f"Unsupported correlation method '{raw_method}'. Choose from: {sorted(m.value for m in CorrelationMethod)}"
         ) from None
 
     if len(columns) < 2:
@@ -54,14 +54,12 @@ def correlation(
         return {"method": method, "column_a": col_a, "column_b": col_b, "correlation": coef}
 
     corr_matrix = df[columns].corr(method=method)  # type: ignore
-    pairs = [
-        {"column_a": a, "column_b": b, "correlation": corr_matrix.loc[a, b]}
-        for a, b in combinations(columns, 2)
-    ]
+    pairs = [{"column_a": a, "column_b": b, "correlation": corr_matrix.loc[a, b]} for a, b in combinations(columns, 2)]
     return {"method": method, "pairs": pairs}
 
 
 # --- regression ---
+
 
 def _fit_linear(df: pd.DataFrame, target: str, features: list[str]) -> dict[str, Any]:
     X = df[features].to_numpy(dtype=float)
@@ -101,8 +99,7 @@ def regression(
         method = RegressionMethod(method)
     except ValueError:
         raise ValueError(
-            f"Unsupported regression method '{raw_method}'. "
-            f"Choose from: {sorted(m.value for m in RegressionMethod)}"
+            f"Unsupported regression method '{raw_method}'. Choose from: {sorted(m.value for m in RegressionMethod)}"
         ) from None
 
     if not features:
@@ -134,6 +131,7 @@ def regression(
 
 
 # --- outlier detection ---
+
 
 def _iqr_outliers(series: pd.Series) -> tuple[pd.Series, dict[str, float]]:
     q1, q3 = series.quantile(0.25), series.quantile(0.75)
@@ -172,8 +170,7 @@ def detect_outliers(
         method = OutlierMethod(method)
     except ValueError:
         raise ValueError(
-            f"Unsupported outlier method '{raw_method}'. "
-            f"Choose from: {sorted(m.value for m in OutlierMethod)}"
+            f"Unsupported outlier method '{raw_method}'. Choose from: {sorted(m.value for m in OutlierMethod)}"
         ) from None
 
     logger.info("Executing detect_outliers | column: %s | method: %s", column, method)
@@ -195,6 +192,7 @@ def detect_outliers(
 
 
 # --- request_column_stats (lazy fetch) ---
+
 
 def request_column_stats(current_csv_path: Path, columns: list[str]) -> dict[str, Any]:
     if not columns:

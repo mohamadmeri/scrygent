@@ -1,18 +1,20 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ..contracts.wrangling import NormalizeMethod
 from ._shared.filtering import apply_filters
 from .io import load_csv, write_temp_csv
-from ..contracts.wrangling import NormalizeMethod
 
 logger = logging.getLogger(__name__)
 
 
 # --- filter_dataset ---
+
 
 def filter_dataset(
     current_csv_path: Path,
@@ -42,6 +44,7 @@ def filter_dataset(
 
 # --- reset_dataset ---
 
+
 def reset_dataset(original_csv_path: Path) -> dict[str, Any]:
     path = Path(original_csv_path)
     if not path.exists():
@@ -57,21 +60,18 @@ def reset_dataset(original_csv_path: Path) -> dict[str, Any]:
 
 # --- normalize_column ---
 
+
 def _min_max(series: pd.Series) -> pd.Series:
     lo, hi = series.min(), series.max()
     if lo == hi:
-        raise ValueError(
-            f"Cannot min-max normalize column '{series.name}': all values are identical ({lo})."
-        )
+        raise ValueError(f"Cannot min-max normalize column '{series.name}': all values are identical ({lo}).")
     return (series - lo) / (hi - lo)
 
 
 def _z_score(series: pd.Series) -> pd.Series:
     std = series.std()
     if std == 0 or pd.isna(std):
-        raise ValueError(
-            f"Cannot z-score normalize column '{series.name}': zero or undefined variance."
-        )
+        raise ValueError(f"Cannot z-score normalize column '{series.name}': zero or undefined variance.")
     return (series - series.mean()) / std
 
 
@@ -81,7 +81,7 @@ def _log_transform(series: pd.Series) -> pd.Series:
             f"Cannot log-transform column '{series.name}': contains non-positive values. "
             "Log transform requires all values > 0."
         )
-    return np.log(series) # type: ignore
+    return np.log(series)  # type: ignore
 
 
 def _strip(series: pd.Series) -> pd.Series:
@@ -131,8 +131,7 @@ def normalize_column(
         method = NormalizeMethod(method)
     except ValueError:
         raise ValueError(
-            f"Unsupported normalize method '{raw_method}'. "
-            f"Choose from: {sorted(m.value for m in NormalizeMethod)}"
+            f"Unsupported normalize method '{raw_method}'. Choose from: {sorted(m.value for m in NormalizeMethod)}"
         ) from None
 
     logger.info("Executing normalize_column | column: %s | method: %s", column, method)
@@ -146,13 +145,9 @@ def normalize_column(
     is_numeric_method = method in _NUMERIC_METHODS
 
     if is_numeric_method and not pd.api.types.is_numeric_dtype(series):
-        raise ValueError(
-            f"Method '{method}' requires a numeric column; '{column}' has dtype '{series.dtype}'."
-        )
+        raise ValueError(f"Method '{method}' requires a numeric column; '{column}' has dtype '{series.dtype}'.")
     if not is_numeric_method and pd.api.types.is_numeric_dtype(series):
-        raise ValueError(
-            f"Method '{method}' is a string operation; '{column}' has numeric dtype '{series.dtype}'."
-        )
+        raise ValueError(f"Method '{method}' is a string operation; '{column}' has numeric dtype '{series.dtype}'.")
 
     before_stats = None
     if is_numeric_method:

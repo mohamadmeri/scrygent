@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class SanitizationError(ValueError):
     """Raised when data cannot cross the JSON-safe boundary. Intercepted by self-heal."""
+
     pass
 
 
@@ -37,14 +38,14 @@ def _sanitize_scalar(value: Any) -> Any:
 
     if isinstance(value, np.str_):
         return str(value)
-        
+
     if isinstance(value, np.integer):
         return int(value)
-        
+
     if isinstance(value, np.floating):
         c = float(value)
         return None if np.isnan(c) or np.isinf(c) else c
-        
+
     if isinstance(value, np.bool_):
         return bool(value)
 
@@ -60,9 +61,7 @@ def _sanitize_scalar(value: Any) -> Any:
     except (TypeError, ValueError):
         pass
 
-    raise SanitizationError(
-        f"Value of type {type(value).__name__!r} ({value!r}) has no sanitization rule"
-    )
+    raise SanitizationError(f"Value of type {type(value).__name__!r} ({value!r}) has no sanitization rule")
 
 
 def _recursive_sanitize(data: Any) -> Any:
@@ -86,7 +85,7 @@ def _recursive_sanitize(data: Any) -> Any:
 
     if isinstance(data, (list, tuple)):
         return [_recursive_sanitize(x) for x in data]
-        
+
     if isinstance(data, np.ndarray):
         return _recursive_sanitize(data.tolist())
 
@@ -99,10 +98,9 @@ class ScrygentBaseModel(BaseModel):
 
     @model_validator(mode="wrap")
     @classmethod
-    def _sanitize_input(cls, data: Any, handler):
-        """
-        Global Gateway: Sanitizes the entire payload layout ONCE before
-        Pydantic drops keys or separates sub-fields. 
+    def _sanitize_input(cls, data: Any, handler: Any) -> Any:
+        """Global Gateway: Sanitizes the entire payload layout ONCE before
+        Pydantic drops keys or separates sub-fields.
         """
         try:
             # Check if input is a dictionary object first
@@ -114,6 +112,6 @@ class ScrygentBaseModel(BaseModel):
             raise
         except Exception as exc:
             raise SanitizationError(f"Unexpected sanitization failure: {exc}") from exc
-        
+
         # Hand off the completely cleaned layout to the standard Pydantic compiler
         return handler(clean)

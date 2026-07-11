@@ -5,6 +5,7 @@ Run from the project root:
 
 Defaults: titanic.csv, a sample query, and 'scripts/profiler_output.txt'.
 """
+
 import json
 import logging
 import sys
@@ -26,6 +27,7 @@ def inspect_profile(csv_path: Path, user_query: str, out_file: Path) -> None:
 
     # Build output as a list of strings
     lines = []
+
     def write(text: str = ""):
         lines.append(text + "\n")
 
@@ -86,8 +88,10 @@ def inspect_profile(csv_path: Path, user_query: str, out_file: Path) -> None:
     out_file.write_text("".join(lines), encoding="utf-8")
     print(f"Profiler output written to {out_file}")
     # Also print a short summary to console
-    print(f"Rows: {profile['row_count']}, Columns: {len(profile['global_schema'])}"
-          f", Detailed: {len(profile['detailed_stats'])}, Truncated: {profile['truncated']}")
+    print(
+        f"Rows: {profile['row_count']}, Columns: {len(profile['global_schema'])}"
+        f", Detailed: {len(profile['detailed_stats'])}, Truncated: {profile['truncated']}"
+    )
 
 
 if __name__ == "__main__":

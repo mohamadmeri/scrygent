@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Any
+
 import pandas as pd
 
 from ._shared.column_stats import compute_detailed_stats
@@ -66,7 +67,7 @@ def _query_score(col: str, series: pd.Series, query: str) -> float:
         score += 3.0
 
     # 2. Fallback: fuzzy containment for underscores (e.g., 'total_sales' in query 'total sales')
-    elif any(tok in q for tok in c.split("_") if len(tok) > 2): 
+    elif any(tok in q for tok in c.split("_") if len(tok) > 2):
         score += 1.0
 
     # numeric intent boost
@@ -118,7 +119,7 @@ def profile_dataframe(df: pd.DataFrame, user_query: str) -> dict[str, Any]:
             "detailed_stats": {},
             "truncated": False,
             "row_sample": [],
-            "missing_detailed_stats": []
+            "missing_detailed_stats": [],
         }
 
     df = df.rename(columns=str)
@@ -141,5 +142,5 @@ def profile_dataframe(df: pd.DataFrame, user_query: str) -> dict[str, Any]:
         "detailed_stats": detailed_stats,
         "truncated": truncated,
         "row_sample": row_sample,
-        "missing_detailed_stats": missing
+        "missing_detailed_stats": missing,
     }

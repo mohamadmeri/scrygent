@@ -1,10 +1,10 @@
+import logging
 import re
+from pathlib import Path
+from typing import Any
+
 import numexpr as ne
 import pandas as pd
-import logging
-
-from typing import Any
-from pathlib import Path
 
 from .io import load_csv, write_temp_csv
 
@@ -18,15 +18,27 @@ _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # column" apart from "identifier that's a numexpr function" without
 # guessing.
 _NUMEXPR_FUNCTIONS = {
-    "sqrt", "abs", "exp", "log", "log10", "log2",
-    "sin", "cos", "tan", "arcsin", "arccos", "arctan",
-    "sinh", "cosh", "tanh", "where",
+    "sqrt",
+    "abs",
+    "exp",
+    "log",
+    "log10",
+    "log2",
+    "sin",
+    "cos",
+    "tan",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "where",
 }
 
 
 def _extract_column_refs(expression: str, df_columns: set[str]) -> set[str]:
-    """
-    Extracts identifiers from the expression that correspond to real
+    """Extracts identifiers from the expression that correspond to real
     DataFrame columns, excluding numexpr's own function names. Any
     identifier that is neither a known column nor a numexpr function is
     an error -- this is what stops the expression from silently reading
@@ -36,8 +48,7 @@ def _extract_column_refs(expression: str, df_columns: set[str]) -> set[str]:
     unknown = identifiers - df_columns - _NUMEXPR_FUNCTIONS
     if unknown:
         raise ValueError(
-            f"Expression references unknown identifier(s): {sorted(unknown)}. "
-            f"Available columns: {sorted(df_columns)}"
+            f"Expression references unknown identifier(s): {sorted(unknown)}. Available columns: {sorted(df_columns)}"
         )
     return identifiers & df_columns
 
@@ -54,8 +65,7 @@ def derive_column(
     new_column: str,
     expression: str,
 ) -> dict[str, Any]:
-    """
-    Evaluates a numexpr expression row-wise across existing numeric
+    """Evaluates a numexpr expression row-wise across existing numeric
     columns and writes the result as a new column, e.g.
     expression="Revenue - Cost" with new_column="Profit".
 
@@ -109,12 +119,12 @@ def derive_column(
 
 # --- evaluate_metrics: scalar math over already-computed step_outputs values ---
 
+
 def evaluate_metrics(
     expression: str,
     values: dict[str, float],
 ) -> dict[str, Any]:
-    """
-    Evaluates a numexpr expression over a small dict of already-computed
+    """Evaluates a numexpr expression over a small dict of already-computed
     scalar values (e.g. two prior analyze_data results), rather than
     over a DataFrame. This covers the common evals pattern of deriving a
     ratio/delta from two previous steps' aggregates without re-reading

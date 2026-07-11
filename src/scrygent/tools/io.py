@@ -1,8 +1,9 @@
-from pathlib import Path
 import logging
-import pandas as pd
-import tempfile
 import os
+import tempfile
+from pathlib import Path
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict]:
     """Extracts a strictly bounded row sample for LLM formatting context."""
     if df.empty:
         return []
-    
+
     # Replace NaN with None so it becomes a valid JSON null
     head = df.head(n)
     safe_df = head.astype(object).where(pd.notna(head), None)
@@ -41,8 +42,7 @@ def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict]:
 
 
 def write_temp_file(suffix: str, prefix: str = "scrygent_") -> Path:
-    """
-    Reserves a new temp file path with the given suffix and returns it,
+    """Reserves a new temp file path with the given suffix and returns it,
     without writing content. Callers write to the returned path themselves
     (pandas .to_csv, matplotlib .savefig, etc.) -- this function's only
     job is picking a safe, uniquely-named location, so every tool that

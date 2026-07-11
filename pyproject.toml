@@ -1,7 +1,7 @@
 [project]
 name = "scrygent"
 version = "0.1.0"
-description = "Add your description here"
+description = "A strictly typed compiler engine for data analysis that translates natural language into deterministic execution graphs."
 readme = "README.md"
 authors = [
     { name = "mohamadmeri", email = "mohammed.meri2@gmail.com" }
@@ -36,12 +36,24 @@ dev = [
     "ruff>=0.4.0",
     "pydantic>=2.7.0",
     "langgraph>=0.0.40",
+    "mypy>=2.2.0",
+    "pandas-stubs>=3.0.3.260530",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--cov=src/scrygent --cov-report=term-missing"
+addopts = [
+    "--cov=src/scrygent",
+    "--cov-report=term-missing",
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["src/scrygent"]
@@ -52,7 +64,17 @@ show_missing = true
 skip_covered = false
 
 [tool.mypy]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
 exclude = ["^tests/"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
 
 [tool.uv.pip]
 index-url = "https://pypi.org/simple"
