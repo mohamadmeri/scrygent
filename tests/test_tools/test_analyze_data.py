@@ -1,296 +1,345 @@
+"""Tests for analyze_data: scalar, grouped, filtered, sorted, limited, and edge cases."""
 import pandas as pd
 import numpy as np
 import pytest
-
+from scrygent.contracts.analyze_data import Aggregation
 from scrygent.tools.analyze_data import analyze_data
 
 
-# Fixtures
+# ── Fixtures ──
 @pytest.fixture
-def sample_df() -> pd.DataFrame:
-    """A representative dataset covering common types and edge cases."""
+def base_df() -> pd.DataFrame:
+    """Core DataFrame with mixed types, nulls, and multiple columns."""
     return pd.DataFrame({
         "name": ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"],
         "age": [25, 30, 35, 30, 25, 40],
         "score": [88.5, 92.0, 75.0, 88.5, 90.0, None],
         "city": ["NY", "LA", "NY", "SF", "LA", "SF"],
-        "gender": ["F", "M", "M", "F", "F", None],
-        "null_col": [1.0, None, 2.0, None, None, 3.0],
+        "dept": ["Eng", "Eng", "Sales", "Sales", "HR", "HR"],
+        "null_val": [1.0, None, 2.0, None, None, 3.0],
     })
-
 
 @pytest.fixture
 def int_group_df() -> pd.DataFrame:
-    """DataFrame with integer group-by column to test key‑string conversion."""
+    """DataFrame with integer group-by column (test string conversion)."""
     return pd.DataFrame({
         "class": [1, 1, 2, 2, 3],
         "value": [10, 20, 30, 40, 50],
     })
 
 
-# Basic scalar aggregations
+# ── Helper to call analyze_data concisely ──
+def _call(df, metrics, **kwargs):
+    return analyze_data(df, metrics, **kwargs)
+
+
+# ── Scalar Aggregations ──
 class TestScalarAggregations:
-    def test_scalar_mean(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="mean")
-        assert result == {"result": 30.833333333333332}  # raw NumPy float; exact value
+    def test_mean(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "avg_age"}])
+        assert r["result"]["avg_age"] == pytest.approx(30.833333333333332)
 
-    def test_scalar_sum(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum")
-        assert result["result"] == 185
+    def test_sum(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}])
+        assert r["result"]["s"] == 185
 
-    def test_scalar_count(self, sample_df):
-        result = analyze_data(sample_df, target_column="score", operation="count")
-        # count excludes NaN → 5
-        assert result["result"] == 5
+    def test_count(self, base_df):
+        r = _call(base_df, [{"column": "score", "aggregation": "count", "alias": "cnt"}])
+        # count ignores NaN
+        assert r["result"]["cnt"] == 5
 
-    def test_scalar_nunique(self, sample_df):
-        result = analyze_data(sample_df, target_column="city", operation="nunique")
-        assert result["result"] == 3  # NY, LA, SF
+    def test_nunique(self, base_df):
+        r = _call(base_df, [{"column": "city", "aggregation": "nunique", "alias": "n"}])
+        assert r["result"]["n"] == 3  # NY, LA, SF
 
-    def test_scalar_min(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="min")
-        assert result["result"] == 25
+    def test_min(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "min", "alias": "m"}])
+        assert r["result"]["m"] == 25
 
-    def test_scalar_max(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="max")
-        assert result["result"] == 40
+    def test_max(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "max", "alias": "m"}])
+        assert r["result"]["m"] == 40
 
-    def test_scalar_std(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="std")
-        # Pandas default ddof=1
-        assert round(result["result"], 3) == round(np.std([25, 30, 35, 30, 25, 40], ddof=1), 3)
+    def test_std(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "std", "alias": "s"}])
+        expected = np.std([25, 30, 35, 30, 25, 40], ddof=1)
+        assert r["result"]["s"] == pytest.approx(expected)
 
-    def test_scalar_var(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="var")
-        assert round(result["result"], 3) == round(np.var([25, 30, 35, 30, 25, 40], ddof=1), 3)
+    def test_var(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "var", "alias": "v"}])
+        expected = np.var([25, 30, 35, 30, 25, 40], ddof=1)
+        assert r["result"]["v"] == pytest.approx(expected)
+
+    def test_median(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "median", "alias": "med"}])
+        assert r["result"]["med"] == 30  # median of [25,25,30,30,35,40] = (30+30)/2
+
+    def test_multiple_metrics(self, base_df):
+        r = _call(base_df, [
+            {"column": "age", "aggregation": "mean", "alias": "avg"},
+            {"column": "age", "aggregation": "count", "alias": "cnt"},
+        ])
+        assert "avg" in r["result"]
+        assert "cnt" in r["result"]
+        assert r["result"]["cnt"] == 6
 
 
-# Grouped aggregations
+# ── Grouped Aggregations ──
 class TestGroupedAggregations:
-    def test_grouped_mean_single_group(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="mean", group_by=["city"])
-        assert "result" in result
-        assert result["result"] == {"NY": 30.0, "LA": 27.5, "SF": 35.0}
+    def test_single_group(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "avg"}], group_by=["city"])
+        # Result is list of dicts: [{'city': 'LA', 'avg': 27.5}, ...]
+        assert len(r["result"]) == 3
+        cities = {row["city"] for row in r["result"]}
+        assert cities == {"NY", "LA", "SF"}
+        for row in r["result"]:
+            if row["city"] == "NY":
+                assert row["avg"] == 30.0
+            elif row["city"] == "LA":
+                assert row["avg"] == 27.5
+            elif row["city"] == "SF":
+                assert row["avg"] == 35.0
 
-    def test_grouped_sum_multiple_groups(self, sample_df):
-        result = analyze_data(sample_df, target_column="score", operation="sum",
-                              group_by=["city", "gender"])
-        # Group combos: ('NY','F'): 88.5, ('LA','F'): 90.0, ('SF','F'): 88.5, ('LA','M'): 92.0, ('NY','M'): 75.0, ('SF',nan): NaN
-        # Sum for ('SF', NaN) is NaN → should be None later after sanitization, but raw result is NaN
-        res = result["result"]
-        assert len(res) == 6
-        assert "('NY', 'F')" in res or str(("NY", "F")) in res
-        # confirm key is string
-        for k in res:
-            assert isinstance(k, str)
+    def test_multiple_groups(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "count", "alias": "cnt"}],
+                  group_by=["city", "dept"])
+        # All combinations
+        assert len(r["result"]) == 6
+        # Check output structure: each record has city, dept, cnt
+        row0 = r["result"][0]
+        assert "city" in row0 and "dept" in row0 and "cnt" in row0
 
-    def test_groupby_integer_keys_converted_to_string(self, int_group_df):
-        result = analyze_data(int_group_df, target_column="value", operation="sum", group_by=["class"])
-        out = result["result"]
-        for k in out.keys():
-            assert isinstance(k, str)
-        assert out == {"1": 30, "2": 70, "3": 50}
-    
-    def test_grouped_nunique(self, sample_df):
-        result = analyze_data(
-            sample_df, 
-            target_column="city", 
-            operation="nunique", 
-            group_by=["gender"]
-        )
-        
-        # F: NY, SF, LA (3) | M: LA, NY (2) | None: SF (1)
-        res = result["result"]
-        assert res["F"] == 3
-        assert res["M"] == 2
-        # Pandas stringifies np.nan as "nan" 
-        assert res["nan"] == 1
+    def test_groupby_integer_keys(self, int_group_df):
+        r = _call(int_group_df, [{"column": "value", "aggregation": "sum", "alias": "s"}],
+                  group_by=["class"])
+        # class ints become strings in columns after reset_index, but records have int? actually pandas will preserve int column. But our _format_and_sort_results does reset_index() then columns = [str(c) for c in agg_df.columns], so column names become strings, but values remain original types (int). So records should have class as int, s as int.
+        classes = {row["class"] for row in r["result"]}
+        assert classes == {1, 2, 3}
+        for row in r["result"]:
+            if row["class"] == 1:
+                assert row["s"] == 30
+            elif row["class"] == 2:
+                assert row["s"] == 70
+            elif row["class"] == 3:
+                assert row["s"] == 50
 
-# Filters (all operators + null handling)
+    def test_nunique_with_groupby(self, base_df):
+        r = _call(base_df, [{"column": "city", "aggregation": "nunique", "alias": "n"}],
+                  group_by=["dept"])
+        # Dept Eng: cities LA, NY → 2; Sales: NY, SF → 2; HR: LA, SF → 2
+        for row in r["result"]:
+            assert row["n"] == 2
+
+
+# ── Filters (all operators + null) ──
 class TestFilters:
-    def test_filter_equals(self, sample_df):
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[{"column": "city", "operator": "==", "value": "NY"}])
-        assert result["result"] == 2  # Alice, Charlie
+    def test_equals(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "city", "operator": "==", "value": "NY"}])
+        assert r["result"]["c"] == 2  # Alice, Charlie
 
-    def test_filter_not_equals(self, sample_df):
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[{"column": "city", "operator": "!=", "value": "NY"}])
-        assert result["result"] == 4
+    def test_not_equals(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "city", "operator": "!=", "value": "NY"}])
+        assert r["result"]["c"] == 4
 
-    def test_filter_greater_than(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              filters=[{"column": "age", "operator": ">", "value": 30}])
-        assert result["result"] == 35 + 40  # 75
+    def test_gt(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  filters=[{"column": "age", "operator": ">", "value": 30}])
+        assert r["result"]["s"] == 75  # Charlie 35 + Frank 40
 
-    def test_filter_less_than(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="count",
-                              filters=[{"column": "age", "operator": "<", "value": 30}])
-        assert result["result"] == 2  # Alice (25), Eve (25)
+    def test_lt(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "age", "operator": "<", "value": 30}])
+        assert r["result"]["c"] == 2  # Alice 25, Eve 25
 
-    def test_filter_greater_equal(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="count",
-                              filters=[{"column": "age", "operator": ">=", "value": 35}])
-        assert result["result"] == 2  # Charlie (35), Frank (40)
+    def test_gte(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "age", "operator": ">=", "value": 35}])
+        assert r["result"]["c"] == 2  # Charlie 35, Frank 40
 
-    def test_filter_less_equal(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="count",
-                              filters=[{"column": "age", "operator": "<=", "value": 30}])
-        assert result["result"] == 4
+    def test_lte(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "age", "operator": "<=", "value": 30}])
+        assert r["result"]["c"] == 4
 
-    def test_filter_in_list(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              filters=[{"column": "city", "operator": "in", "value": ["NY", "SF"]}])
-        # Alice(25) NY, Charlie(35) NY, Diana(30) SF, Frank(40) SF => 25+35+30+40 = 130
-        assert result["result"] == 130
+    def test_in_list(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  filters=[{"column": "city", "operator": "in", "value": ["NY", "SF"]}])
+        # NY: Alice 25, Charlie 35; SF: Diana 30, Frank 40 → sum=130
+        assert r["result"]["s"] == 130
 
-    def test_filter_contains_string(self, sample_df):
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[{"column": "name", "operator": "contains", "value": "i"}])
-        # Alice, Charlie, Diana -> 3
-        assert result["result"] == 3
+    def test_not_in_list(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "city", "operator": "not in", "value": ["NY", "SF"]}])
+        # Remaining: LA (Bob, Eve) → 2
+        assert r["result"]["c"] == 2
 
-    def test_filter_none_equals(self, sample_df):
-        # score has one None -> Frank
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[{"column": "score", "operator": "==", "value": None}])
-        assert result["result"] == 1
+    def test_contains(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "name", "operator": "contains", "value": "li"}])
+        # Alice, Charlie, Frank? Frank contains 'li'? No, 'Frank' does not. Actually Alice, Charlie → 2. Wait check: 'Alice' contains 'li', 'Charlie' contains 'li'. So 2.
+        assert r["result"]["c"] == 2
 
-    def test_filter_none_not_equals(self, sample_df):
-        # score not None -> 5
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[{"column": "score", "operator": "!=", "value": None}])
-        assert result["result"] == 5
+    def test_startswith(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "name", "operator": "startswith", "value": "A"}])
+        assert r["result"]["c"] == 1  # Alice
 
-    def test_filter_none_with_invalid_operator_raises(self, sample_df):
+    def test_endswith(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "name", "operator": "endswith", "value": "e"}])
+        # Alice, Charlie, Eve → 3
+        assert r["result"]["c"] == 3
+
+    def test_null_equals(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "score", "operator": "==", "value": None}])
+        assert r["result"]["c"] == 1  # Frank
+
+    def test_null_not_equals(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "score", "operator": "!=", "value": None}])
+        assert r["result"]["c"] == 5
+
+    def test_null_with_gt_raises(self, base_df):
         with pytest.raises(ValueError, match="Operator '>' with None value is not supported"):
-            analyze_data(sample_df, target_column="age", operation="count",
-                         filters=[{"column": "score", "operator": ">", "value": None}])
+            _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "score", "operator": ">", "value": None}])
 
-    def test_multiple_filters_and_logic(self, sample_df):
-        # age > 30 AND city == "SF"
-        result = analyze_data(sample_df, target_column="name", operation="count",
-                              filters=[
-                                  {"column": "age", "operator": ">", "value": 30},
-                                  {"column": "city", "operator": "==", "value": "SF"}
-                              ])
-        # Only Frank (40, SF) -> 1
-        assert result["result"] == 1
+    def test_multiple_filters(self, base_df):
+        r = _call(base_df, [{"column": "name", "aggregation": "count", "alias": "c"}],
+                  filters=[
+                      {"column": "age", "operator": ">", "value": 30},
+                      {"column": "city", "operator": "==", "value": "SF"}
+                  ])
+        assert r["result"]["c"] == 1  # Frank
 
-    def test_filter_after_grouping(self, sample_df):
-        # Group by city, filter only cities with score > 80 (pre‑filter)
-        result = analyze_data(sample_df, target_column="age", operation="mean",
-                              filters=[{"column": "score", "operator": ">", "value": 80}],
-                              group_by=["city"])
-        # After filtering score > 80: Alice(88.5), Bob(92.0), Diana(88.5), Eve(90.0). Frank excluded (None)
-        # Group by city: NY: Alice(88.5) age 25, LA: Bob(92.0) age 30 + Eve(90.0) age 25, SF: Diana(88.5) age 30
-        # Means: NY: 25, LA: (30+25)/2 = 27.5, SF: 30
-        assert result["result"] == {"NY": 25.0, "LA": 27.5, "SF": 30.0}
+    def test_filter_column_not_found(self, base_df):
+        with pytest.raises(ValueError, match="Filter column 'unknown' not found"):
+            _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "m"}],
+                  filters=[{"column": "unknown", "operator": "==", "value": 1}])
 
+    def test_in_requires_list(self, base_df):
+        with pytest.raises(ValueError, match="Operator 'in' requires a list"):
+            _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "city", "operator": "in", "value": "NY"}])
 
-# Sorting and top‑k
-class TestSortingAndTopK:
-    def test_sort_ascending(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              group_by=["city"], sort_order="asc")
-        # sums: NY=25+35=60, LA=30+25=55, SF=30+40=70 -> sorted asc: LA(55), NY(60), SF(70)
-        assert list(result["result"].keys()) == ["LA", "NY", "SF"]
-        assert list(result["result"].values()) == [55, 60, 70]
-
-    def test_sort_descending(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              group_by=["city"], sort_order="desc")
-        # sorted desc: SF(70), NY(60), LA(55)
-        assert list(result["result"].keys()) == ["SF", "NY", "LA"]
-
-    def test_top_k(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              group_by=["city"], sort_order="desc", top_k=2)
-        # top 2: SF(70), NY(60)
-        assert list(result["result"].keys()) == ["SF", "NY"]
-        assert len(result["result"]) == 2
-
-    def test_top_k_without_sort_retains_first_n(self, sample_df):
-        # Without sort, Pandas .head(2) just takes first 2 groups encountered (not deterministic for order)
-        # We'll just verify we get only 2 entries
-        result = analyze_data(sample_df, target_column="age", operation="count",
-                              group_by=["city"], top_k=2)
-        assert len(result["result"]) == 2
-
-    def test_top_k_all(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="sum",
-                              group_by=["city"], sort_order="asc", top_k=10)
-        # all 3 cities
-        assert len(result["result"]) == 3
+    def test_not_in_requires_list(self, base_df):
+        with pytest.raises(ValueError, match="Operator 'not in' requires a list"):
+            _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "city", "operator": "not in", "value": "NY"}])
 
 
-# Edge cases & error handling
-class TestEdgeCasesAndErrors:
-    def test_empty_after_filter_returns_warning(self, sample_df):
-        result = analyze_data(sample_df, target_column="age", operation="count",
-                              filters=[{"column": "age", "operator": ">", "value": 100}])
-        assert result == {"result": None, "warning": "Filtered dataset is empty."}
+# ── Sorting and Top‑k ──
+class TestSortingAndLimit:
+    def test_sort_ascending(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  group_by=["city"], sort={"column": "s", "direction": "asc"})
+        # Expected order: LA 55, NY 60, SF 70
+        vals = [row["s"] for row in r["result"]]
+        assert vals == [55, 60, 70]
 
-    def test_invalid_operation_raises(self, sample_df):
+    def test_sort_descending(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  group_by=["city"], sort={"column": "s", "direction": "desc"})
+        vals = [row["s"] for row in r["result"]]
+        assert vals == [70, 60, 55]
+
+    def test_limit(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  group_by=["city"], sort={"column": "s", "direction": "asc"}, limit=2)
+        assert len(r["result"]) == 2
+        vals = [row["s"] for row in r["result"]]
+        assert vals == [55, 60]
+
+    def test_sort_by_alias_not_found_raises(self, base_df):
+        with pytest.raises(ValueError, match="Sort column 'nonexistent' not found"):
+            _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}],
+                  group_by=["city"], sort={"column": "nonexistent", "direction": "asc"})
+
+
+# ── Edge Cases & Error Handling ──
+class TestEdgeCases:
+    def test_empty_after_filter(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "age", "operator": ">", "value": 100}])
+        assert r == {"result": None, "warning": "Filtered dataset is empty."}
+
+    def test_invalid_aggregation(self, base_df):
         with pytest.raises(ValueError, match="Unsupported operation"):
-            analyze_data(sample_df, target_column="age", operation="skew")
+            _call(base_df, [{"column": "age", "aggregation": "percentile", "alias": "p"}])
 
-    def test_invalid_target_column_raises(self, sample_df):
-        with pytest.raises(ValueError, match="Target column 'salary' not found"):
-            analyze_data(sample_df, target_column="salary", operation="mean")
+    def test_column_not_found(self, base_df):
+        with pytest.raises(ValueError, match="Metric target column 'salary' not found"):
+            _call(base_df, [{"column": "salary", "aggregation": "mean", "alias": "m"}])
 
-    def test_invalid_group_by_column_raises(self, sample_df):
+    def test_group_by_column_not_found(self, base_df):
         with pytest.raises(ValueError, match="Group-by column 'region' not found"):
-            analyze_data(sample_df, target_column="age", operation="mean", group_by=["region"])
+            _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "m"}],
+                  group_by=["region"])
 
-    def test_invalid_filter_missing_keys_raises(self, sample_df):
+    def test_duplicate_alias(self, base_df):
+        with pytest.raises(ValueError, match="Duplicate metric alias 'dup'"):
+            _call(base_df, [
+                {"column": "age", "aggregation": "mean", "alias": "dup"},
+                {"column": "score", "aggregation": "sum", "alias": "dup"},
+            ])
+
+    def test_original_df_not_mutated(self, base_df):
+        original_columns = base_df.columns.tolist()
+        original_len = len(base_df)
+        _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "m"}],
+              filters=[{"column": "age", "operator": ">", "value": 25}])
+        assert len(base_df) == original_len
+        assert base_df.columns.tolist() == original_columns
+
+    def test_nulls_in_numeric(self, base_df):
+        # score has nulls; aggregations ignore them
+        r = _call(base_df, [{"column": "score", "aggregation": "mean", "alias": "m"}])
+        assert r["result"]["m"] == pytest.approx((88.5+92.0+75.0+88.5+90.0)/5)
+
+    def test_filter_missing_keys(self, base_df):
         bad_filter = {"column": "age", "operator": ">"}  # no value
         with pytest.raises(ValueError, match="Invalid filter specification"):
-            analyze_data(sample_df, target_column="age", operation="count",
-                         filters=[bad_filter])
+            _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[bad_filter])
 
-    def test_invalid_filter_unsupported_operator_raises(self, sample_df):
+    def test_filter_unsupported_operator(self, base_df):
         with pytest.raises(ValueError, match="Unsupported filter operator"):
-            analyze_data(sample_df, target_column="age", operation="count",
-                         filters=[{"column": "age", "operator": "between", "value": [20, 30]}])
+            _call(base_df, [{"column": "age", "aggregation": "count", "alias": "c"}],
+                  filters=[{"column": "age", "operator": "between", "value": [20,30]}])
 
-    def test_original_df_not_mutated(self, sample_df):
-        original_rows = len(sample_df)
-        analyze_data(sample_df, target_column="score", operation="mean",
-                     filters=[{"column": "age", "operator": ">", "value": 25}])
-        assert len(sample_df) == original_rows
 
-    def test_all_numeric_operations_with_nulls(self, sample_df):
-        # score has nulls; mean, sum should ignore them
-        result_mean = analyze_data(sample_df, target_column="score", operation="mean")
-        expected_mean = (88.5 + 92.0 + 75.0 + 88.5 + 90.0) / 5
-        assert abs(result_mean["result"] - expected_mean) < 0.001
-
-        result_sum = analyze_data(sample_df, target_column="score", operation="sum")
-        assert result_sum["result"] == 88.5 + 92.0 + 75.0 + 88.5 + 90.0
-
-    def test_invalid_filter_column_raises(self, sample_df):
-        with pytest.raises(ValueError, match="Filter column 'fake_column' not found"):
-            analyze_data(sample_df, target_column="age", operation="mean",
-                         filters=[{"column": "fake_column", "operator": "==", "value": 1}])
-
-    def test_filter_in_requires_list_raises(self, sample_df):
-        with pytest.raises(ValueError, match="requires a list of values"):
-            analyze_data(sample_df, target_column="age", operation="count",
-                         filters=[{"column": "city", "operator": "in", "value": "NY"}])
-
-# Output format checks
+# ── Output Format ──
 class TestOutputFormat:
-    def test_result_key_present(self, sample_df):
-        res = analyze_data(sample_df, target_column="age", operation="mean")
-        assert "result" in res
+    def test_result_key_present(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "m"}])
+        assert "result" in r
 
-    def test_grouped_output_dict_keys_are_strings(self, sample_df):
-        res = analyze_data(sample_df, target_column="age", operation="sum", group_by=["city"])
-        for k in res["result"].keys():
-            assert isinstance(k, str)
+    def test_scalar_result_is_dict(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "mean", "alias": "m"}])
+        assert isinstance(r["result"], dict)
 
-    def test_scalar_output_is_returned_directly_in_result(self, sample_df):
-        res = analyze_data(sample_df, target_column="age", operation="mean")
-        # result is a float (scalar) but wrapped in dict with "result"
-        assert isinstance(res["result"], (int, float, np.floating))
+    def test_grouped_result_is_list_of_dicts(self, base_df):
+        r = _call(base_df, [{"column": "age", "aggregation": "sum", "alias": "s"}], group_by=["city"])
+        assert isinstance(r["result"], list)
+        assert all(isinstance(item, dict) for item in r["result"])
+        # Keys should include group columns and metric aliases
+        assert "city" in r["result"][0]
+        assert "s" in r["result"][0]
+
+
+# ── Contract: Every Aggregation Works ──
+class TestAllAggregations:
+    @pytest.mark.parametrize("agg", list(Aggregation))
+    def test_every_aggregation_executes(self, agg, base_df):
+        # Use a numeric column; for nunique we can also test on categorical but numeric works too.
+        col = "age" if agg != Aggregation.NUNIQUE else "city"  # nunique works on any
+        result = analyze_data(
+            base_df,
+            metrics=[{"column": col, "aggregation": agg.value, "alias": "out"}],
+        )
+        assert "result" in result
+        # Output should not be None for non-empty df
+        assert result["result"] is not None

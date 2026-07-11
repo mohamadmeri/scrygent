@@ -1,255 +1,142 @@
-import pytest
+"""Tests for the new profiler – public API and internal column scoring."""
 import pandas as pd
-import numpy as np
-from unittest.mock import patch
+from scrygent.tools.profiler import profile_dataframe, _select_columns
+from scrygent.tools.profiler import _is_identifier
 
-from scrygent.tools.profiler import (
-    _get_global_schema,
-    _extract_query_columns,
-    _select_priority_columns,
-    _compute_detailed_stats,
-    profile_dataframe
-)
+# ── Helpers ──
+def make_df(data: dict) -> pd.DataFrame:
+    return pd.DataFrame(data)
 
 
-# --- FIXTURES ---
+# ── Public API (profile_dataframe) ──
+class TestProfileDataframe:
+    def test_returns_expected_keys(self):
+        df = make_df({"a": [1, 2], "b": [3, 4]})
+        result = profile_dataframe(df, "a")
+        expected = {"row_count", "global_schema", "detailed_stats", "truncated",
+                    "row_sample", "missing_detailed_stats"}
+        assert set(result.keys()) == expected
 
-@pytest.fixture
-def sample_df():
-    """Provides a dataframe with mixed types and missing values for testing."""
-    return pd.DataFrame({
-        "id": [1, 2, 3, 4, 5],
-        "revenue": [100.5, 200.0, np.nan, 400.0, 500.0],  # 1 missing
-        "category": ["A", "B", "A", None, None],          # 2 missing
-        "date": pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"])
-    })
+    def test_row_count(self):
+        df = make_df({"x": range(10)})
+        result = profile_dataframe(df, "x")
+        assert result["row_count"] == 10
 
-# --- TESTS FOR _get_global_schema ---
+    def test_global_schema_has_all_columns(self):
+        df = make_df({"col1": [1], "col2": ["text"]})
+        result = profile_dataframe(df, "any")
+        assert set(result["global_schema"].keys()) == {"col1", "col2"}
+        for v in result["global_schema"].values():
+            assert isinstance(v, str)
 
-def test_get_global_schema(sample_df):
-    schema = _get_global_schema(sample_df)
-    assert isinstance(schema, dict)
-    assert schema["id"] in ["int64", "Int64"]
-    assert schema["revenue"] in ["float64", "Float64"]
-    # Supports both legacy object and modern PyArrow-backed string types
-    assert schema["category"] in ["object", "str", "string"]
-    assert "datetime64" in schema["date"]
+    def test_row_sample_length_and_nan(self):
+        df = make_df({"val": [1.0, None, 3.0]})
+        result = profile_dataframe(df, "val")
+        assert len(result["row_sample"]) == 3
+        # Second row should be None (NaN → null)
+        assert result["row_sample"][1]["val"] is None
 
-# --- TESTS FOR _extract_query_columns ---
+    def test_empty_dataframe(self):
+        df = pd.DataFrame()
+        result = profile_dataframe(df, "query")
+        assert result["row_count"] == 0
+        assert result["global_schema"] == {}
+        assert result["detailed_stats"] == {}
 
-def test_extract_query_columns_prevents_false_positives():
-    df_columns = ["id", "a", "on", "rev (usd)"]
-    # 'id' is inside 'hidden', 'a' is inside 'data', 'on' is inside 'correlation'
-    user_query = "Find the hidden data correlation for rev (usd)"
-    
-    matched = _extract_query_columns(df_columns, user_query)
-    
-    # Only "rev (usd)" should match. The regex boundaries must block the false positives.
-    assert "rev (usd)" in matched
-    assert "id" not in matched
-    assert "a" not in matched
-    assert "on" not in matched
+    def test_truncation_flag(self):
+        # Create many columns beyond MAX_DETAILED_COLUMNS=15
+        df = make_df({f"col_{i}": [1, 2] for i in range(20)})
+        result = profile_dataframe(df, "any")
+        assert result["truncated"] is True
+        assert len(result["detailed_stats"]) <= 15
 
+    def test_missing_detailed_stats_calculated(self):
+        df = make_df({f"col_{i}": [1] for i in range(20)})
+        result = profile_dataframe(df, "col_0")
+        all_cols = set(result["global_schema"].keys())
+        stat_cols = set(result["detailed_stats"].keys())
+        missing = result["missing_detailed_stats"]
+        assert missing == sorted(all_cols - stat_cols)
 
-def test_extract_query_columns_case_insensitivity():
-    df_columns = ["ReVenUe", "cost"]
-    user_query = "What is the revenue?"
-    
-    matched = _extract_query_columns(df_columns, user_query)
-    assert matched == ["ReVenUe"]
+    def test_integer_column_names_normalized(self):
+        df = make_df({0: [1, 2], 1: ["a", "b"]})
+        result = profile_dataframe(df, "0")
+        # Keys in global_schema should be strings
+        assert isinstance(list(result["global_schema"].keys())[0], str)
+        assert "0" in result["global_schema"]
 
-
-# --- TESTS FOR _select_priority_columns ---
-
-def test_select_priority_columns_under_limit(sample_df):
-    query_cols = ["revenue"]
-    priority = _select_priority_columns(sample_df, query_cols, max_cols=10)
-    
-    assert len(priority) == 4
-    assert priority[0] == "revenue"  # Query columns should be first
-    # The rest should be included
-
-
-def test_select_priority_columns_over_limit_truncates():
-    # Create a dummy df with 5 columns
-    df = pd.DataFrame({str(i): [] for i in range(5)})
-    query_cols = ["0", "1", "2"]
-    
-    priority = _select_priority_columns(df, query_cols, max_cols=2)
-    
-    assert len(priority) == 2
-    assert priority == ["0", "1"]  # Truncated query columns
+    def test_row_sample_keys_are_strings(self):
+        df = make_df({0: [1, 2], "text": ["a", "b"]})
+        result = profile_dataframe(df, "query")
+        sample = result["row_sample"][0]
+        for k in sample:
+            assert isinstance(k, str)
 
 
-def test_select_priority_columns_fills_by_data_density():
-    # id has 0 nulls, revenue has 1 null, category has 2 nulls
-    df = pd.DataFrame({
-        "category": [None, None, "A"],          # 1 valid
-        "revenue": [100.0, np.nan, 200.0],      # 2 valid
-        "id": [1, 2, 3]                         # 3 valid
-    })
-    
-    # We want max 2 columns, query provides none.
-    # It should pick 'id' and 'revenue' because they have the most non-null data.
-    priority = _select_priority_columns(df, query_cols=[], max_cols=2)
-    
-    assert len(priority) == 2
-    assert priority == ["id", "revenue"]
+# ── Internal column selector (_select_columns) ──
+class TestSelectColumns:
+    def test_direct_query_match_boosted(self):
+        df = make_df({"revenue": [1, 2], "cost": [3, 4], "other": [5, 6]})
+        cols = _select_columns(df, "revenue", max_cols=2)
+        # revenue should appear first due to direct match boost
+        assert cols[0] == "revenue"
+
+    def test_identifier_columns_penalized(self):
+        df = make_df({"id": [1, 2], "value": [10, 20]})
+        cols = _select_columns(df, "value", max_cols=2)
+        # value should come before id, because id is an identifier
+        assert cols[0] == "value"
+
+    def test_uuid_like_column_penalized(self):
+        df = make_df({"uuid": ["a", "b"], "name": ["x", "y"]})
+        cols = _select_columns(df, "name", max_cols=2)
+        assert cols[0] == "name"
+
+    def test_high_unique_ratio_looks_like_identifier(self):
+        df = make_df({"some_id": [1, 2, 3, 4], "value": [10, 20, 30, 40]})
+        cols = _select_columns(df, "value", max_cols=2)
+        assert cols[0] == "value"
+
+    def test_monotonic_increasing_integer_is_penalized(self):
+        df = make_df({"row_number": [1, 2, 3, 4], "amount": [10, 20, 30, 40]})
+        cols = _select_columns(df, "amount", max_cols=2)
+        assert cols[0] == "amount"
+
+    def test_density_boosts_column(self):
+        # null_col has lots of NaNs, so dense_col should rank higher
+        df = make_df({"dense_col": [1, 2, 3, 4], "sparse_col": [1, None, None, None]})
+        cols = _select_columns(df, "any", max_cols=2)
+        assert cols[0] == "dense_col"
+
+    def test_numeric_intent_boost(self):
+        df = make_df({"profit": [1, 2], "age": [30, 40]})
+        # query with $ gives numeric boost
+        cols = _select_columns(df, "profit greater than $50", max_cols=2)
+        # profit and age are both numeric, profit matches query, so it should be first
+        assert cols[0] == "profit"
+
+    def test_stable_ordering_on_ties(self):
+        df = make_df({"a": [1, 2], "b": [3, 4]})
+        cols = _select_columns(df, "no_match", max_cols=2)
+        # no query match, same density; order should follow original column order
+        assert cols == ["a", "b"]
+
+    def test_max_cols_truncation(self):
+        df = make_df({f"col_{i}": [1, 2] for i in range(10)})
+        cols = _select_columns(df, "col_0", max_cols=3)
+        assert len(cols) == 3
+        assert cols[0] == "col_0"
 
 
-# --- TESTS FOR _compute_detailed_stats ---
+class TestIsIdentifier:
+    def test_small_dataset_nonid_returns_false(self):
+        """With fewer than MIN_ROWS_FOR_STATISTICAL_ID_SIGNAL rows, non‑id names return False."""
+        series = pd.Series([1, 2, 3])  # 3 rows, not matching id patterns
+        assert _is_identifier("value", series) is False
 
-def test_compute_detailed_stats_metrics(sample_df):
-    stats = _compute_detailed_stats(sample_df, ["revenue", "category"])
-    
-    # Numeric column checks
-    assert "revenue" in stats
-    assert stats["revenue"]["null_rate"] == 0.2  # 1 null out of 5 rows
-    assert stats["revenue"]["min"] == 100.5
-    assert stats["revenue"]["max"] == 500.0
-    
-    # Categorical column checks
-    assert "category" in stats
-    assert stats["category"]["null_rate"] == 0.4 # 2 nulls out of 5 rows
-    assert "min" not in stats["category"]        # Bounds shouldn't exist for objects
-    assert "max" not in stats["category"]
-
-
-def test_compute_detailed_stats_empty_dataframe_division_by_zero_prevention():
-    empty_df = pd.DataFrame({"revenue": pd.Series(dtype='float64')})
-    stats = _compute_detailed_stats(empty_df, ["revenue"])
-    
-    assert stats["revenue"]["null_rate"] == 0.0
-    assert stats["revenue"]["min"]
-    assert stats["revenue"]["max"]
-
-
-def test_compute_detailed_stats_all_null_numeric_column():
-    df = pd.DataFrame({"revenue": [np.nan, np.nan, np.nan]})
-    stats = _compute_detailed_stats(df, ["revenue"])
-    
-    assert stats["revenue"]["null_rate"] == 1.0
-    assert stats["revenue"]["min"]
-    assert stats["revenue"]["max"]
-
-
-# --- TESTS FOR profile_dataframe (Orchestrator) ---
-
-@patch("scrygent.tools.profiler.get_column_sample")
-def test_profile_dataframe_standard_execution(mock_get_sample, sample_df):
-    mock_get_sample.return_value = [{"id": 1}, {"id": 2}, {"id": 3}]
-    user_query = "analyze the revenue"
-    
-    profile = profile_dataframe(sample_df, user_query)
-    
-    assert "global_schema" in profile
-    assert "detailed_stats" in profile
-    assert "truncated" in profile
-    assert "row_sample" in profile
-    
-    assert profile["truncated"] is False
-    assert "revenue" in profile["detailed_stats"]
-    assert profile["row_sample"] == [{"id": 1}, {"id": 2}, {"id": 3}]
-    
-    mock_get_sample.assert_called_once()
-
-
-@patch("scrygent.tools.profiler.get_column_sample")
-def test_profile_dataframe_empty(mock_get_sample):
-    empty_df = pd.DataFrame()
-    profile = profile_dataframe(empty_df, "test")
-    
-    assert profile["global_schema"] == {}
-    assert profile["detailed_stats"] == {}
-    assert profile["truncated"] is False
-    assert profile["row_sample"] == []
-    
-    # Should exit early, not calling the sample function
-    mock_get_sample.assert_not_called()
-
-
-@patch("scrygent.tools.profiler.get_column_sample")
-def test_profile_dataframe_normalizes_integer_columns(mock_get_sample):
-    mock_get_sample.return_value = []
-    # Headerless CSVs often result in integer column names
-    df = pd.DataFrame({0: [100, 200], 1: ["A", "B"]})
-    
-    # If the str() cast normalization is missing, this will throw a KeyError
-    # when attempting to slice df[other_cols] internally.
-    profile = profile_dataframe(df, "test")
-    
-    assert "0" in profile["global_schema"]
-    assert "1" in profile["global_schema"]
-    assert "0" in profile["detailed_stats"]
-
-def test_profile_empty_dataframe():
-    """Empty dataframe returns blank profile (logs warning)."""
-    import pandas as pd
-    from scrygent.tools.profiler import profile_dataframe
-    
-    df_empty = pd.DataFrame()
-    result = profile_dataframe(df_empty, "test query")
-    
-    assert result["global_schema"] == {}
-    assert result["detailed_stats"] == {}
-    assert result["row_sample"] == []
-    assert result["truncated"] is False
-
-
-def test_profile_query_exceeds_max_columns():
-    """Query references more columns than MAX_DETAILED_COLUMNS (logs warning)."""
-    import pandas as pd
-    from scrygent.tools.profiler import profile_dataframe, MAX_DETAILED_COLUMNS
-    
-    # Create dataframe with 20 columns, all match query
-    df = pd.DataFrame({f"col_{i}": range(10) for i in range(20)})
-    
-    # Query matches all 20 columns by name
-    query = " ".join([f"col_{i}" for i in range(20)])
-    
-    result = profile_dataframe(df, query)
-    
-    # detailed_stats should be truncated to MAX_DETAILED_COLUMNS
-    assert len(result["detailed_stats"]) == MAX_DETAILED_COLUMNS
-    assert result["truncated"] is True
-
-
-def test_profile_truncation_logging():
-    """Profile truncation sets truncated=True and logs info."""
-    import pandas as pd
-    from scrygent.tools.profiler import profile_dataframe
-    
-    # Create dataframe with 30 columns
-    df = pd.DataFrame({f"col_{i}": range(5) for i in range(30)})
-    
-    # Query matches only one column
-    result = profile_dataframe(df, "col_0")
-    
-    assert result["truncated"] is True
-    assert len(result["detailed_stats"]) < len(result["global_schema"])
-    assert len(result["global_schema"]) == 30
-
-def test_select_priority_columns_query_cols_fill_limit():
-    """When query columns fill max_cols, other_cols is empty (line 87 edge case)."""
-    import pandas as pd
-    from scrygent.tools.profiler import _select_priority_columns
-    
-    df = pd.DataFrame({f"col_{i}": range(5) for i in range(10)})
-    query_cols = ["col_0", "col_1", "col_2"]
-    
-    # max_cols=3 means query_cols fills exactly the limit
-    priority = _select_priority_columns(df, query_cols, max_cols=3)
-    
-    assert len(priority) == 3
-    assert priority == ["col_0", "col_1", "col_2"]
-
-def test_select_priority_columns_all_columns_are_query_columns():
-    """When all dataframe columns are query columns, other_cols is empty (line 87)."""
-    df = pd.DataFrame({"col_a": [1, 2, 3], "col_b": [4, 5, 6]})
-    query_cols = ["col_a", "col_b"]  # Query includes ALL columns in dataframe
-    
-    # max_cols is larger than the number of columns
-    priority = _select_priority_columns(df, query_cols, max_cols=10)
-    
-    assert len(priority) == 2
-    assert priority == ["col_a", "col_b"]
+    def test_large_dataset_high_uniqueness_returns_true(self):
+        """With 20+ rows and unique_ratio > 0.97, statistical signal triggers."""
+        # 25 rows, all unique → ratio 1.0
+        series = pd.Series(range(25))
+        # Name is not in _ID_PATTERNS, so only statistical path can mark it as identifier
+        assert _is_identifier("row_id_like", series) is True
