@@ -3,26 +3,26 @@ from pathlib import Path
 from typing import Literal
 from pydantic import Field
 
+from .outputs import CSVProfile, AnalysisReport, DirectAnswer
+from ..base_model import ScrygentBaseModel
+from .step_models import Plan, StepRecord
 
-from .schemas import CSVProfile, Plan, AnalysisReport, DirectAnswer
-from .base_model import ScrygentBaseModel
 
 # Strict Type Definitions for JSON execution memory.
 type JSONPrimitive = str | int | float | bool | None
-type JSONType = JSONPrimitive | list['JSONType'] | dict[str, 'JSONType']
+type JSONType = JSONPrimitive | list[JSONType] | dict[str, JSONType]
 
-# A step output is either a structured dictionary (Tier 1 tools) or a raw string (Sandbox Tier 2)
-type ToolOutput = dict[str, JSONType] | str
+# All tools must return a valid JSON structure (dict, list, or primitive)
+type ToolOutput = dict[str, JSONType] | list[JSONType] | JSONPrimitive
 
 
 class AgentState(ScrygentBaseModel):
     """
     The AgentState class encapsulates the entire state of the agent 
     during a single user session. It is designed to be serializable to 
-    JSON for persistence and recovery, and it tracks all relevant information 
-    from the initial CSV upload through the final report generation.
+    JSON for persistence and recovery.
     """
-    
+
     # System Configuration and Inputs
     original_csv_path: Path = Field(
         description="Immutable path to the initial user-uploaded CSV. Allows resetting state."
@@ -37,7 +37,18 @@ class AgentState(ScrygentBaseModel):
         default=False,
         description="If True, Reporter outputs a DirectAnswer (benchmarking). If False, outputs AnalysisReport."
     )
-    
+    has_replanned: bool = Field(
+        default=False,
+        description=(
+            "True once the single permitted lazy-fetch replan (triggered by a "
+            "request_column_stats-only Plan) has occurred. The Planner may only "
+            "request a mid-session profile augmentation once per query; this is "
+            "the hard session-level guard against repeated lazy fetches, "
+            "independent of and in addition to the plan-level structural "
+            "constraint enforced in Plan._lazy_fetch_must_be_sole_step."
+        ),
+    )
+
     # Profiling Data
     data_profile: CSVProfile | None = Field(
         default=None,
@@ -69,13 +80,15 @@ class AgentState(ScrygentBaseModel):
     )
     
     # Routing & Control
-    execution_status: Literal["pending", "running", "aborted", "complete"] = Field(
+    execution_status: Literal["pending", "running", "replan", "aborted", "complete"] = Field(
         default="pending",
         description="Drives conditional routing in the graph builder."
     )
-    sandbox_activated: bool = Field(
-        default=False,
-        description="Flag surfaced to the UI if Tier 2 execution was required."
+
+    # Execution History
+    execution_trace: list[StepRecord] = Field(
+        default_factory=list,
+        description="Compact audit trail for completed, failed, and skipped steps."
     )
     
     # Final Output

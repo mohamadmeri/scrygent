@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from pydantic import BaseModel, ConfigDict, model_validator
+
+
+class SanitizationError(ValueError):
+    """Raised when data cannot cross the JSON-safe boundary. Intercepted by self-heal."""
+    pass
+
+
+def _sanitize_scalar(value: Any) -> Any:
+    """Safely converts Pandas/NumPy C-types to native Python primitives."""
+    if value is pd.NaT:
+        return None
+
+    if isinstance(value, Enum):
+        return value.value
+
+    if isinstance(value, Path):
+        return str(value)
+
+    if isinstance(value, pd.Timestamp):
+        return None if pd.isna(value) else value.isoformat()
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, np.datetime64):
+        return None if np.isnat(value) else pd.Timestamp(value).isoformat()
+
+    if isinstance(value, np.str_):
+        return str(value)
+        
+    if isinstance(value, np.integer):
+        return int(value)
+        
+    if isinstance(value, np.floating):
+        c = float(value)
+        return None if np.isnan(c) or np.isinf(c) else c
+        
+    if isinstance(value, np.bool_):
+        return bool(value)
+
+    if isinstance(value, float):
+        return None if np.isnan(value) or np.isinf(value) else value
+
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    raise SanitizationError(
+        f"Value of type {type(value).__name__!r} ({value!r}) has no sanitization rule"
+    )
+
+
+def _recursive_sanitize(data: Any) -> Any:
+    """Recursively walks collections to sanitize all nested items."""
+    if isinstance(data, BaseModel):
+        return data
+
+    if isinstance(data, pd.DataFrame):
+        raise SanitizationError("DataFrame objects cannot cross the Scrygent model boundary")
+    if isinstance(data, pd.Series):
+        raise SanitizationError("Series objects cannot cross the Scrygent model boundary")
+
+    if isinstance(data, dict):
+        clean: dict[Any, Any] = {}
+        for k, v in data.items():
+            ck = _sanitize_scalar(k)
+            if not isinstance(ck, (str, int, float, bool, type(None))):
+                raise SanitizationError(f"Dictionary key {ck!r} is not JSON compatible")
+            clean[ck] = _recursive_sanitize(v)
+        return clean
+
+    if isinstance(data, (list, tuple)):
+        return [_recursive_sanitize(x) for x in data]
+        
+    if isinstance(data, np.ndarray):
+        return _recursive_sanitize(data.tolist())
+
+    return _sanitize_scalar(data)
+
+
+class ScrygentBaseModel(BaseModel):
+    # CRITICAL FIX: validate_assignment=True removed to prevent infinite loops in mode="after" validators
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _sanitize_input(cls, data: Any, handler):
+        """
+        Global Gateway: Sanitizes the entire payload layout ONCE before
+        Pydantic drops keys or separates sub-fields. 
+        """
+        try:
+            # Check if input is a dictionary object first
+            if isinstance(data, dict):
+                clean = _recursive_sanitize(data)
+            else:
+                clean = data
+        except SanitizationError:
+            raise
+        except Exception as exc:
+            raise SanitizationError(f"Unexpected sanitization failure: {exc}") from exc
+        
+        # Hand off the completely cleaned layout to the standard Pydantic compiler
+        return handler(clean)
