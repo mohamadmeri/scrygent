@@ -39,3 +39,16 @@ data/
 .hypothesis
 
 planner_debug.json
+
+# VS Code: Commit team settings, ignore user-specific files
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# Script artifacts and generated outputs
+scripts/plot_outputs/
+scripts/*.txt
+scripts/*.png
+scripts/*.csv
+scripts/*.log
