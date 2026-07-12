@@ -37,6 +37,7 @@ STANDARD OPTIMIZATION HEURISTICS (APPLY THESE STRICTLY):
 2. METRIC CONSOLIDATION: If multiple steps calculate different metrics (e.g., mean and sum) on the same dataset, merge them into a single `analyze_data` step.
 3. GROUP-BY VS. RESET-DATASET: Avoid the inefficient pattern of `filter -> analyze -> reset -> filter -> analyze`. If the user is comparing categories (e.g., "US vs China"), use a single `analyze_data` step with `group_by` and an `in` filter.
 4. LAZY FETCH PRECEDENCE: If the input DraftPlan contains `request_column_stats`, immediately terminate optimization. Output that single step exactly as it was received. Strip out everything else.
+5. TOP-N / HIGHEST / LOWEST QUERIES: If the user asks for the "highest", "lowest", "top", "maximum", or "minimum" of a metric, you MUST use a single `analyze_data` step. Do not attempt to use `derive_column`, `correlation`, or multiple steps. Use `group_by` for the category, `metrics` with the correct aggregation (e.g., `max` or `min`), `sort` in the appropriate direction, and `limit: 1`.
 
 THE CONSERVATION INVARIANT:
 Optimization must alter the *execution structure*, NEVER the analysis parameters. You must preserve all specific column names, exact matching string literals (e.g., preserving capitalization and spacing), numerical cutoffs, and sorting conditions inside `intent_description`.
@@ -59,16 +60,29 @@ DIRECTIVES:
 3. ENUM BINDING: Look closely at permitted Enum strings for operators, metrics, and aggregation fields within `{tool_specs}`. You must coerce text shortcuts (like "equals", "avg", "by") into exact Enum strings matching your schema configuration (e.g., "==", "mean", "group_by").
 4. FILTER ARRAYS: Filters are ALWAYS a list of flat objects containing exactly "column", "operator", and "value". Never pack filters as associative key-value mappings.
 5. MULTI-VALUE FILTERS: When a filter targets multiple values (e.g., matching multiple countries), use an array of strings directly: `["United States", "China"]`. Do not nest additional dictionary objects inside the value key.
+6. SCALAR VALUES: The "value" field in a filter must be a primitive (string, number, boolean). NEVER nest an entire tool call, dictionary, or JSON object inside the "value" field.
+7. REQUIRED FIELDS: Every step object in the "steps" array MUST contain "step_id", "rationale", "tool_name", and "parameters". Do not omit "step_id" or "rationale".
 
-STRUCTURAL SYNTAX MAP (COPY THIS SHAPE, NOT THE CONTENT):
-Draft Step:
-tool_name: "example_tool"
-intent_description: "Filter TargetColumn based on Threshold, collect AggregationMetric."
-
-Emitted JSON Parameters:
-"parameters": {{
-  "filters": [{{"column": "TargetColumn", "operator": "==", "value": "Threshold"}}],
-  "metrics": [{{"column": "AggregationMetric", "aggregation": "sum"}}]
+STRUCTURAL SYNTAX MAP (COPY THIS EXACT SHAPE):
+{{
+  "steps": [
+    {{
+      "step_id": "step_1",
+      "rationale": "Filter the dataset to isolate the target demographic before aggregation.",
+      "tool_name": "filter_dataset",
+      "parameters": {{
+        "filters": [{{"column": "TargetColumn", "operator": "==", "value": "Threshold"}}]
+      }}
+    }},
+    {{
+      "step_id": "step_2",
+      "rationale": "Calculate the mean of the AggregationMetric on the filtered subset.",
+      "tool_name": "analyze_data",
+      "parameters": {{
+        "metrics": [{{"column": "AggregationMetric", "aggregation": "mean", "alias": "Avg Metric"}}]
+      }}
+    }}
+  ]
 }}
 
 Output the final Execution Plan now.

@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import ValidationError
 
 from ..llm_factory import get_structured_llm
 from ..memory.store import retrieve_experience
@@ -61,7 +62,7 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
 
         # Initialize LLMs for Draft and Final passes
         draft_llm = get_structured_llm(pydantic_schema=DraftPlan, provider="groq")
-        final_llm = get_structured_llm(pydantic_schema=Plan, provider="groq")
+        final_llm = get_structured_llm(pydantic_schema=Plan, provider="groq", method="json_mode")
 
         # PASS 1: PARSER (Generate AST)
         logger.info("Planner Pass 1: Parsing Abstract Intent...")
@@ -94,23 +95,70 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
         )
 
         # PASS 3: IR EMISSION (Bind to Strict Pydantic Contracts)
+        # We implement a self-healing loop here because the LLM may occasionally
+        # hallucinate the JSON structure (e.g., nesting objects inside scalar fields).
         logger.info("Planner Pass 3: Emitting Strict IR JSON...")
-        emission_prompt = ChatPromptTemplate.from_messages([
+
+        base_emission_prompt = ChatPromptTemplate.from_messages([
             ("system", EMISSION_SYSTEM_PROMPT),
             ("user", "Translate this Optimized Plan into strict tool payloads for the query: {query}"),
         ])
-        final_plan: Plan = resilient_call(
-            lambda: (emission_prompt | final_llm).invoke({
-                "tool_specs": tool_specs,
-                "optimized_plan": optimized_plan.model_dump_json(indent=2),
-                "query": state.user_query,
-            }),
-            service="Groq (Emission Pass)",
-        )
 
-        logger.info("3-Pass Compilation Complete. Emitted %d execution steps.", len(final_plan.steps))
+        max_emission_retries = 2
+        final_plan = None
+        last_error_msg = ""
 
-        _dump_plan_debug(draft_plan, optimized_plan, final_plan)
+        for attempt in range(max_emission_retries + 1):
+            try:
+                if attempt > 0:
+                    # Append the error context to the system prompt for the retry
+                    correction_system = EMISSION_SYSTEM_PROMPT + (
+                        f"\n\nCRITICAL CORRECTION REQUIRED:\n"
+                        f"Your previous JSON output failed schema validation with this error:\n"
+                        f"{last_error_msg}\n"
+                        f"Ensure the 'value' field in filters is a primitive (string/number), NOT a nested object."
+                    )
+                    current_prompt = ChatPromptTemplate.from_messages([
+                        ("system", correction_system),
+                        ("user", "Translate this Optimized Plan into strict tool payloads for the query: {query}"),
+                    ])
+                else:
+                    current_prompt = base_emission_prompt
+
+                # The lambda captures current_prompt via default argument to avoid late-binding issues
+                final_plan = resilient_call(
+                    lambda p=current_prompt: (p | final_llm).invoke({  # type: ignore
+                        "tool_specs": tool_specs,
+                        "optimized_plan": optimized_plan.model_dump_json(indent=2),
+                        "query": state.user_query,
+                    }),
+                    service="Groq (Emission Pass)",
+                )
+                break  # Success!
+
+            except ValidationError as e:
+                # Extract the exact failing field path to show the LLM
+                first_error = e.errors()[0]
+                loc = " -> ".join(str(l) for l in first_error["loc"]) if first_error["loc"] else "root"
+                msg = first_error.get("msg", "Unknown validation failure")
+                last_error_msg = f"Field '{loc}': {msg}"
+
+                logger.warning(
+                    "Planner Pass 3 IR validation failed (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_emission_retries + 1,
+                    last_error_msg,
+                )
+
+                if attempt == max_emission_retries:
+                    raise ValueError(
+                        f"Planner failed to generate a valid Plan after {max_emission_retries + 1} attempts. "
+                        f"Last error: {last_error_msg}"
+                    ) from None
+
+        logger.info("3-Pass Compilation Complete. Emitted %d execution steps.", len(final_plan.steps))  # type: ignore
+
+        _dump_plan_debug(draft_plan, optimized_plan, final_plan)  # type: ignore
 
         return {"plan": final_plan, "execution_status": "running"}
 
