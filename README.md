@@ -1,332 +1,152 @@
-# Scrygent
+<div align="center">
+  <!-- TODO: Add your custom logo here -->
+  <!-- <img src="docs/assets/logo.png" alt="Scrygent Logo" width="120" /> -->
+  
+  # Scrygent
+  
+  **A Strictly Typed Compiler Engine for Data Analysis**
+  
+  [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+  [![LangGraph](https://img.shields.io/badge/Orchestrator-LangGraph-2c3e50.svg)](https://langchain-ai.github.io/langgraph/)
+  [![Pydantic v2](https://img.shields.io/badge/Validation-Pydantic_v2-e92063.svg)](https://docs.pydantic.dev/latest/)
+  [![Security](https://img.shields.io/badge/Security-Zero_Code_Gen-success.svg)]()
+  [![Logic](https://img.shields.io/badge/Logic-Deterministic-brightgreen.svg)]()
+</div>
 
-### Technical Foundation
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Orchestrator-LangGraph](https://img.shields.io/badge/Orchestrator-LangGraph-2c3e50.svg)](https://python.langchain.com/docs/langgraph)
-[![Validation-Pydantic_v2](https://img.shields.io/badge/Validation-Pydantic_v2-e92063.svg)](https://docs.pydantic.dev/latest/)
+<br/>
 
-### Design Philosophy
-[![Security-Zero-Code-Gen](https://img.shields.io/badge/Security-Zero_Code_Gen-success.svg)](docs/ARCHITECTURE.md#strict-determinism-no-sandbox)
-[![Logic-Deterministic](https://img.shields.io/badge/Logic-Deterministic-brightgreen.svg)](docs/ARCHITECTURE.md#the-plan-and-execute-compiler)
-[![Workflow-Self-Healing](https://img.shields.io/badge/Workflow-Self--Healing-orange.svg)](./docs/ARCHITECTURE.md#the-self-healing-correction-loop)
+<div align="center">
+  <!-- TODO: Insert final UI screenshot here -->
+  <img src="docs/assets/ui_screenshot.png" alt="Scrygent UI" width="100%" style="border-radius: 8px; border: 1px solid #333;" />
+  <p><em>The IDE-style compilation interface. (Deployment: WIP)</em></p>
+</div>
 
-> **Upload a CSV. Ask a question in plain English. Get a mathematically verified report.**
+<br/>
 
-Scrygent is an autonomous data analysis system that combines Large Language Models with a deterministic execution engine. Instead of generating Python code and hoping it runs correctly, Scrygent compiles natural language into a strict Intermediate Representation (IR) and executes it through a curated suite of handwritten analytical tools.
-
-The LLM is responsible for understanding intent only. Every calculation, aggregation, regression, visualization, and statistical operation is performed by deterministic Python code using Pandas, NumPy, and numexpr. The result is an architecture that produces mathematically verified outputs while eliminating hallucinated calculations and unsafe code generation.
+> **Scrygent is not a generic "chat with your data" agent.** It is a disciplined, strictly typed compiler that translates natural language into static, immutable execution graphs. The LLM decides *what* to compute; the deterministic Python engine decides *how*. Zero code generation. Zero hallucinated mathematics.
 
 ---
 
-## Architecture at a Glance
+## 📑 Navigation
 
-```text
-Natural Language
-        │
-        ▼
-   Planner LLM
-        │
-        ▼
- Strict Pydantic IR
-        │
-        ▼
-Deterministic Compiler
-        │
-        ▼
- Pandas / NumPy / numexpr
-        │
-        ▼
-  Verified Report
-```
+| Module | Description |
+| :--- | :--- |
+| [**🏗️ Architecture**](docs/ARCHITECTURE.md) | Deep dive into the 3-pass compiler, dependency hierarchy, and self-healing loops. |
+| [**📊 Benchmarks**](docs/BENCHMARKS.md) | Empirical evaluation metrics against DABench and DataBench Lite. *(WIP)* |
+
+---
+
+## 🏗️ System Architecture
+
+Scrygent abandons the fragile "ReAct" loop of generating and executing arbitrary Python. Instead, it utilizes a **Plan-and-Execute Compiler** pipeline.
 
 ```mermaid
 flowchart LR
-
-    U[User]
-    CSV[(CSV Dataset)]
-
-    P[Profiler]
-    PL[Planner LLM]
-    EX[Deterministic Executor]
-    R[Reporter LLM]
-
-    CSV --> P
-    U --> PL
-
-    P --> PL
-    PL --> EX
-    EX --> R
+    U[User Query] --> PL[3-Pass Planner LLM]
+    CSV[(CSV Dataset)] --> P[Profiler Node]
+    P -->|Global Schema & Stats| PL
+    PL -->|Strict Pydantic IR| EX[Deterministic Executor]
+    EX -->|Verified JSON Outputs| R[Reporter LLM]
     R --> OUT[Final Report]
-
-    style EX fill:#dff6dd
+    
+    style EX fill:#dff6dd,stroke:#333,stroke-width:2px
+    style PL fill:#fff5cc,stroke:#333,stroke-width:2px
 ```
 
----
-
-# Why Scrygent?
-
-Traditional AI data agents typically generate Python code, repeatedly execute it, inspect the output, generate more code, and hope the final result is correct.
-
-That approach has several drawbacks:
-
-* reasoning loops that consume context
-* fragile generated code
-* hallucinated calculations
-* inconsistent execution
-* security concerns around arbitrary code generation
-
-Scrygent follows a different architecture.
-
-The planner never writes executable Python. Instead, it emits a strict JSON Intermediate Representation describing **what** should be computed. A deterministic compiler handles **how** it is computed.
-
-```
-Natural Language
-        │
-        ▼
-Planner LLM
-        │
-        ▼
-Strict Pydantic IR
-        │
-        ▼
-Deterministic Python Compiler
-        │
-        ▼
-Verified Mathematical Results
-```
-
-This separation makes every numerical result traceable to deterministic code rather than language-model reasoning.
+1. **Profiler:** Deterministically extracts global schemas and query-aware statistics to minimize prompt size.
+2. **Planner:** A 3-pass compiler (Parser → Optimizer → IR Emitter) that translates intent into strict JSON.
+3. **Executor:** Dispatches validated payloads to a handwritten, stateless suite of pure Python tools.
+4. **Reporter:** Synthesizes the final report, strictly constrained to verified tool outputs.
 
 ---
 
-# Key Features
+## ⚙️ Key Engineering Highlights
 
-### Deterministic Analytics
+These implementation details form the core of Scrygent's reliability and are designed to be defended in technical interviews:
 
-Every aggregation, statistic, regression, visualization, filter, and derived metric is computed by handwritten Python tools.
+*   **The 3-Pass Compiler Pipeline:** Forcing an LLM to simultaneously reason about data logic and format deeply nested JSON causes cognitive overload. Scrygent separates this into three distinct passes: an abstract Parser, a heuristic Optimizer (applying filter pushdowns and metric consolidation), and a strict IR Emitter locked behind `json_mode`.
+*   **The Hermetic JSON Boundary:** Pandas and NumPy operations inherently produce C-types (`np.int64`, `pd.NaT`, `np.nan`) that crash standard JSON serializers. Scrygent intercepts this via `ScrygentBaseModel`, applying a recursive `@model_validator(mode="wrap")` to scrub and cast all data to native Python primitives at the exact moment of state assignment.
+*   **Self-Healing Execution with Actionable Context:** When an execution fails (e.g., a hallucinated column name), the system does not crash or trigger a global graph back-edge. The Python exception is caught, enriched with the *exact list of available columns*, and routed through an internal LLM correction loop. The LLM repairs its own payload syntax mid-flight.
+*   **The Multi-Step Composition Pattern:** Tools never pass massive DataFrames through the LangGraph state. Transforming tools (`filter_dataset`, `derive_column`) write their output to a secure, temporary CSV and update `AgentState.current_csv_path`. Subsequent steps naturally inherit the filtered data, maintaining the stateless-tools rule.
+*   **Semantic Experience Replay:** Successful execution plans are automatically embedded and stored in a Qdrant vector database. Future queries retrieve structurally similar past plans as few-shot examples, allowing the planner to improve over time without retraining.
 
-The LLM never performs arithmetic.
+---
+## 📊 Benchmarks & Evaluation
+
+Scrygent is evaluated against industry-standard benchmarks to validate its deterministic approach against code-generation agents.
+
+### Active Benchmarks
+
+| Benchmark | Dataset | Questions | Status |
+| :--- | :--- | :--- | :--- |
+| **InfiAgent-DABench** (ICML 2024) | 124 CSVs | 603 questions | 🟡 In Progress |
+| **DataBench Lite** (SemEval 2025) | 80 datasets | 1,822 questions | 🟡 In Progress |
+
+### Evaluation Methodology
+
+- **Mode:** `eval_mode=True` in `AgentState` forces the Reporter to output only `DirectAnswer` (no narrative, no plots)
+- **Baseline:** GPT-4 achieves **78.99%** accuracy on DABench
+- **Target:** Llama 3.3 70B backbone with deterministic advantage on standard statistical queries
+- **Metrics Tracked:**
+  - Planner schema validity rate
+  - Correction-loop success rate  
+  - End-to-end task completion
+  - Latency breakdown by compiler pass
+  - Schema failure rate (with vs. without 3-pass split)
+
+### Robustness Testing
+
+We generate "poisoned" variants of clean benchmark CSVs to test error handling:
+- UTF-16/CP1252 encodings
+- Semicolon/pipe delimiters
+- Mixed-type columns (numeric + string artifacts)
+- Missing headers, offset data rows
+
+👉 **See `scripts/run_benchmark.py` for the evaluation harness.**
 
 ---
 
-### Plan-and-Execute Compiler
+## 🛠️ Technology Stack
 
-Natural language is compiled into a strongly typed Intermediate Representation rather than executable Python.
-
-This provides:
-
-* deterministic execution
-* schema validation
-* fast failure
-* reproducible analyses
-* safer execution
-
----
-
-### Strict Pydantic Contracts
-
-Every tool consumes validated Pydantic models.
-
-Malformed plans fail immediately instead of silently producing incorrect analyses.
+| Layer | Technology | Rationale |
+| :--- | :--- | :--- |
+| **Workflow Orchestration** | LangGraph | Explicit graph structure, clean cyclic routing, strict state management. |
+| **Data Validation** | Pydantic v2 | Recursive serialization and strict JSON schema enforcement at boundaries. |
+| **Data Engine** | Pandas 3.x, NumPy | Standard, strictly-typed C-backend data manipulation. |
+| **Safe Math** | numexpr | Securely evaluates row-wise math without exposing Python's `eval()`. |
+| **LLM Providers** | Groq, OpenRouter | Provider-agnostic abstraction for fast structured JSON generation. |
+| **Long-Term Memory** | Qdrant, HuggingFace | Serverless vector DB and embeddings for Experience Replay. |
+| **UI** | Streamlit | Modular, IDE-style presentation layer. |
+| **Dependency Mgmt** | uv | Fast, deterministic builds and strict lockfile resolution. |
 
 ---
 
-### Self-Healing Execution
+## 🚀 Local Development
 
-Execution errors are not returned directly to the user.
-
-Instead, Python exceptions are routed through a constrained correction loop where the planner repairs invalid parameters before execution continues.
-
-Examples include:
-
-* nonexistent columns
-* invalid enum values
-* malformed tool parameters
-* schema violations
-
----
-
-### Intelligent Dataset Profiling
-
-Before planning begins, Scrygent performs deterministic profiling of the uploaded dataset.
-
-The profiler provides:
-
-* complete schema
-* data types
-* null statistics
-* representative row samples
-* query-aware detailed statistics
-* lazy statistical enrichment through constrained replanning
-
-This minimizes prompt size while ensuring the planner never guesses data distributions.
-
----
-
-### Constrained Re-Planning
-
-If additional statistical information is required, the planner cannot guess.
-
-Instead it performs a controlled re-plan cycle:
-
-Planner → request statistics → deterministic profiler → Planner
-
-This guarantees planning decisions are based on verified dataset metadata.
-
----
-
-### Semantic Experience Memory
-
-Successful execution plans are automatically stored in a serverless vector database.
-
-Future queries retrieve structurally similar successful plans as few-shot examples, allowing the planner to improve over time without retraining.
-
----
-
-### Provider Agnostic LLM Layer
-
-Scrygent currently supports multiple providers behind a single abstraction layer.
-
-Switching providers requires only configuration changes rather than application changes.
-
----
-
-### Zero Arbitrary Code Execution
-
-No `exec()`.
-
-No sandbox.
-
-No generated Python.
-
-Cross-column mathematical expressions are evaluated safely using `numexpr` under a restricted namespace.
-
----
-
-# Execution Graph
-
-Scrygent is orchestrated using LangGraph.
-
-The graph explicitly controls execution through deterministic state transitions. The planner is responsible only for producing plans, while the executor is the only component allowed to manipulate data. Missing metadata and execution failures trigger controlled recovery loops instead of unconstrained reasoning.
-
-```mermaid
-stateDiagram-v2
-
-    [*] --> Profiler
-
-    Profiler --> Planner
-
-    Planner --> Executor
-
-    Executor --> Planner : execution_status = replan
-
-    Executor --> Executor : execution_status = continue
-
-    Executor --> Reporter : execution_status = completed
-
-    Executor --> End : execution_status = aborted
-
-    Reporter --> End
-
-    End --> [*]
-```
-
----
-
-# Compiler Pipeline
-
-The central architectural idea behind Scrygent is separating reasoning from execution.
-
-```mermaid
-flowchart LR
-
-A[Natural Language Query]
-
-A --> B[Planner LLM]
-
-B --> C[Strict Pydantic IR]
-
-C --> D[Deterministic Python Compiler]
-
-D --> E[Pandas / NumPy / numexpr]
-
-E --> F[Verified Results]
-
-style C fill:#fff5cc
-style D fill:#dff6dd
-```
-
-The planner determines **what** should happen.
-
-The deterministic execution engine determines **how** it happens.
-
----
-
-# Technology Stack
-
-| Layer                  | Technology       |
-| ---------------------- | ---------------- |
-| UI                     | Streamlit        |
-| Workflow Orchestration | LangGraph        |
-| LLM Providers          | Groq, OpenRouter |
-| Structured Output      | LangChain        |
-| Data Engine            | Pandas 3.x       |
-| Numerical Computing    | NumPy            |
-| Safe Expression Engine | numexpr          |
-| Data Validation        | Pydantic v2      |
-| Long-Term Memory       | Upstash Vector   |
-| Dependency Management  | uv               |
-
----
-
-# Engineering Highlights
-
-Some implementation details that are easy to miss from the UI but form the core of the project:
-
-* strict layered architecture preventing circular dependencies
-* handwritten deterministic analytical tool suite
-* compiler-style Intermediate Representation instead of Python generation
-* recursive JSON sanitization at model boundaries
-* lazy dataset profiling for token efficiency
-* deterministic execution pipeline
-* provider-independent LLM abstraction
-* semantic experience replay using vector retrieval
-* robust validation with automatic recovery
-* strongly typed execution contracts throughout the system
-
----
-
-# Local Development
-
-Clone the repository.
+Clone the repository and initialize the environment using `uv` for fast, deterministic builds:
 
 ```bash
-git clone https://github.com/mohamadmeri/scrygent
+git clone https://github.com/mohamadmeri/scrygent.git
 cd scrygent
-```
-
-Install dependencies.
-
-```bash
 uv sync
 ```
 
-Create a secrets file.
+Create a secrets file and populate it with your API credentials:
 
 ```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 ```
 
-Populate it with your credentials.
-
 ```toml
+# .streamlit/secrets.toml
 GROQ_API_KEY = "..."
 OPENROUTER_API_KEY = "..."
-UPSTASH_VECTOR_REST_URL = "..."
-UPSTASH_VECTOR_REST_TOKEN = "..."
+QDRANT_URL = "..."
+QDRANT_API_KEY = "..."
+HF_API_TOKEN = "..."
 ```
 
-Run the application.
+Run the application:
 
 ```bash
 uv run streamlit run app.py
@@ -334,40 +154,8 @@ uv run streamlit run app.py
 
 ---
 
-# Documentation
+## 📚 Deep Dive Documentation
 
-For a deeper explanation of the compiler architecture, dependency hierarchy, graph routing, deterministic execution model, and design rationale, see:
+For a comprehensive explanation of the compiler architecture, the Dependency Golden Rule, graph routing mechanics, and the self-healing correction loops, see:
 
-```
-docs/ARCHITECTURE.md
-```
-
----
-
-# Evaluation
-
-The evaluation suite is currently a work in progress.
-
-Planned benchmarks include:
-
-* planner success rate
-* correction-loop success rate
-* re-planning frequency
-* end-to-end task completion
-* execution latency
-* token consumption
-* comparison against code-generation based agents
-
-Benchmark results will be published once the evaluation framework is complete.
-
----
-
-# Roadmap
-
-* Expanded deterministic analytical tool suite
-* Larger semantic experience memory
-* Comprehensive benchmark suite
-* Multi-dataset workflows
-* SQL backend support
-* Improved visualization capabilities
-* Additional execution optimizations
+👉 **[Read the Architecture Document](docs/ARCHITECTURE.md)**
