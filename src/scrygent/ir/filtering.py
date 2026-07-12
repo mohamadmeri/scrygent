@@ -1,7 +1,7 @@
 """Shared filter-operator vocabulary and condition shapes for the IR layer.
 
 This module defines the discriminated union for row-level filtering.
-Consumed by analyze_data and filter_dataset, it ensures that the
+Consumed by `analyze_data` and `filter_dataset`, it ensures that the
 operator and value shape are strictly aligned at the schema boundary.
 """
 
@@ -29,7 +29,9 @@ class ScalarFilterCondition(ScrygentBaseModel):
 
     column: str = Field(min_length=1, description="The column to filter.")
     operator: Literal[_SCALAR_OPS] = Field(description="The scalar comparison operator.")  # type: ignore
-    value: str | int | float | bool = Field(description="The scalar value to compare against.")
+    value: str | int | float | bool | None = Field(
+        description="The scalar value to compare against. Use null for missing data checks."
+    )
 
 
 class ListFilterCondition(ScrygentBaseModel):

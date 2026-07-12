@@ -8,7 +8,7 @@ JSON-safe boundaries at every assignment.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAliasType
 
 from pydantic import Field
 
@@ -16,10 +16,9 @@ from ..base_model import ScrygentBaseModel
 from .outputs import AnalysisReport, CSVProfile, DirectAnswer
 from .step_models import Plan, StepRecord
 
-# Recursive JSON type definitions compatible with all modern Python versions.
-JSONPrimitive: TypeAlias = str | int | float | bool | None
-JSONType: TypeAlias = JSONPrimitive | list["JSONType"] | dict[str, "JSONType"]
-ToolOutput: TypeAlias = dict[str, JSONType] | list[JSONType] | JSONPrimitive
+JSONPrimitive = str | int | float | bool | None
+JSONType = TypeAliasType("JSONType", JSONPrimitive | list["JSONType"] | dict[str, "JSONType"])  # type: ignore
+ToolOutput = TypeAliasType("ToolOutput", dict[str, JSONType] | list[JSONType] | JSONPrimitive)  # type: ignore
 
 
 class AgentState(ScrygentBaseModel):

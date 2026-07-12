@@ -52,10 +52,17 @@ def _format_and_sort_results(
         direction = sort.get("direction", "asc")
         ascending = direction == "asc"
 
-        if sort_col in agg_df.columns or sort_col in agg_df.index.names:
+        valid_targets = set(agg_df.columns) | set(agg_df.index.names)
+        if sort_col in valid_targets:
             agg_df = agg_df.sort_values(by=sort_col, ascending=ascending)  # type: ignore
         else:
-            raise ValueError(f"Sort column '{sort_col}' not found. Must be an aggregation alias or group dimension.")
+            # Provide available targets for the correction chain
+            clean_targets = sorted(list(valid_targets), key=lambda x: (x is not None, str(x)))
+
+            raise ValueError(
+                f"Sort column '{sort_col}' not found. Must be an aggregation alias or group dimension. "
+                f"Available: {clean_targets}"
+            )
 
     if limit is not None:
         agg_df = agg_df.head(limit)
@@ -96,13 +103,16 @@ def analyze_data(
         limit,
     )
 
-    # 1. Validation (Fast-failing for the LLM correction loop)
+    # 1. Validation (Fast-failing with actionable context for the LLM correction loop)
     seen_aliases = set()
+    available_cols = list(df.columns)
+
     for m in metrics:
         if m["aggregation"] not in SUPPORTED_OPERATIONS:
             raise ValueError(f"Unsupported operation '{m['aggregation']}'. Choose from: {SUPPORTED_OPERATIONS}")
         if m["column"] not in df.columns:
-            raise ValueError(f"Metric target column '{m['column']}' not found in dataset.")
+            # Inject available columns so the LLM can self-heal
+            raise ValueError(f"Metric target column '{m['column']}' not found in dataset. Available: {available_cols}")
         if m["alias"] in seen_aliases:
             raise ValueError(f"Duplicate metric alias '{m['alias']}'. Each metric must have a unique alias.")
         seen_aliases.add(m["alias"])
@@ -110,7 +120,8 @@ def analyze_data(
     if group_by:
         for col in group_by:
             if col not in df.columns:
-                raise ValueError(f"Group-by column '{col}' not found in dataset.")
+                # Inject available columns so the LLM can self-heal
+                raise ValueError(f"Group-by column '{col}' not found in dataset. Available: {available_cols}")
 
     if filters is None:
         filters = []
