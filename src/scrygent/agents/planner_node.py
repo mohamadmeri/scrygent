@@ -58,6 +58,9 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
     try:
         profile_context = state.data_profile.model_dump_json(indent=2)
         experience_context = retrieve_experience(state.user_query)
+
+        logger.info("Retrieved Experience Context:\n%s", experience_context)
+
         tool_specs = get_tool_specs()
 
         # Initialize LLMs for Draft and Final passes
