@@ -49,3 +49,6 @@ scripts/plot_outputs/
 scripts/*.txt
 scripts/*.jsonl
 scripts/*.png
+
+# Streamlit secrets
+.streamlit/secrets.toml

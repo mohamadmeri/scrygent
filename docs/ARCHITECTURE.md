@@ -62,13 +62,17 @@ Scrygent enforces a strict, top-down dependency hierarchy. **Lower layers must N
 ```mermaid
 flowchart TD
     UI[UI Layer<br/>app.py, streamlit] --> Graph
+    UI --> Core
     Graph[Graph Layer<br/>graph/builder.py] --> Agents
     Agents[Agents Layer<br/>profiler, planner, executor, reporter] --> Models
     Agents --> Tools
+    Agents --> Core
     Models[Models Layer<br/>AgentState, Plan, Schemas] --> IR
     Models --> Contracts
     Tools[Tools Layer<br/>analyze_data, filter, stats] --> IR
     Tools --> Contracts
+    Core[Core Infrastructure<br/>resilience, llm_factory, memory] --> Models
+    Core --> Contracts
     IR[IR Layer<br/>Pydantic Schemas] --> Contracts
     Contracts[Contracts Layer<br/>StrEnums, ToolName]
     
@@ -76,19 +80,21 @@ flowchart TD
     style IR fill:#fff5cc
     style Tools fill:#dff6dd
     style Models fill:#fce4d6
+    style Core fill:#e8daef
 ```
 
 ### Layer Responsibilities
 
-| Layer | Package | Responsibility | Imports From |
+| Layer | Package / Files | Responsibility | Imports From |
 | :--- | :--- | :--- | :--- |
 | **Contracts** | `contracts/` | Closed-vocabulary `StrEnum` definitions (`ToolName`, `FilterOperator`, etc.) | Nothing |
-| **IR** | `ir/` | Strict Pydantic schemas for tool parameters (`AnalyzeDataParams`, `FilterDatasetParams`) | `contracts/` |
+| **IR** | `ir/` | Strict Pydantic schemas for tool parameters (`AnalyzeDataParams`, etc.) | `contracts/` |
 | **Models** | `models/` | State definitions (`AgentState`), execution `Plan`, tool registry | `ir/`, `contracts/` |
 | **Tools** | `tools/` | Pure Python functions (filtering, aggregation, regression, visualization) | `ir/`, `contracts/` |
-| **Agents** | `agents/` | LangGraph nodes (profiler, planner, executor, reporter) | `tools/`, `models/`, `ir/` |
+| **Core Infrastructure** | `resilience.py`, `llm_factory.py`, `memory/` | Network backoff, LLM client instantiation, semantic vector storage. | `models/`, `contracts/` |
+| **Agents** | `agents/` | LangGraph nodes (profiler, planner, executor, reporter) | `tools/`, `models/`, `ir/`, `core` |
 | **Graph** | `graph/` | Orchestrates node routing via `AgentState.execution_status` | `agents/`, `models/` |
-| **UI** | `app.py` | Streamlit presentation layer; invokes graph once, caches in `st.session_state` | `graph/` |
+| **UI** | `app.py`, `ui/` | Streamlit presentation layer; invokes graph once, caches in `st.session_state` | `graph/`, `core` |
 
 ---
 
@@ -345,51 +351,32 @@ This turns a fragile retry loop into a deterministic self-healing compiler pass.
 **Embeddings:** HuggingFace serverless inference API (`sentence-transformers/all-MiniLM-L6-v2`)
 
 ### Read Path (Planner)
-1. Embed user query via HuggingFace API
-2. Query Qdrant for top-k similar past queries (cosine similarity)
-3. Filter by `RELEVANCE_THRESHOLD = 0.75`
-4. Format as few-shot examples:
-   ```
-   PAST QUERY: what is the city with highest philanthropy score?
-   SUCCESSFUL PLAN: { "steps": [...] }
-   ```
-5. Inject into Pass 1 (Parser) prompt
+1. Embed user query via HuggingFace API.
+2. Query Qdrant for top-k similar past queries (cosine similarity).
+3. Filter by `RELEVANCE_THRESHOLD = 0.75`.
+4. Format as few-shot examples and inject into Pass 1 (Parser) prompt.
 
 ### Write Path (Reporter)
-1. On successful execution (`execution_status == "complete"`), Reporter commits experience
-2. Embed query via HuggingFace API
-3. Generate vector ID via `hashlib.md5(query.encode()).hexdigest()`
-4. Upsert to Qdrant with payload:
-   ```python
-   {
-       "query": "what is the city with highest philanthropy score?",
-       "plan_json": "{ \"steps\": [...] }"
-   }
-   ```
+1. On successful execution (`execution_status == "complete"`), Reporter commits experience.
+2. Embed query via HuggingFace API.
+3. Generate vector ID via `hashlib.md5(query.encode()).hexdigest()`.
+4. Upsert to Qdrant with payload containing the query and validated plan JSON.
 
-**UI Isolation:** The memory module utilizes `contextvars.ContextVar` to inject UI-level cooldown callbacks without importing Streamlit, maintaining strict architectural isolation.
+**Privacy Guarantee:** Only the natural language query and the validated JSON plan are embedded. Raw CSV data and intermediate DataFrames never enter the vector database, ensuring strict data isolation.
 
 ---
 
 ## Network Resilience
 
 **Location:** `src/scrygent/resilience.py`  
-**Purpose:** Deterministic exponential-backoff wrapper for HTTP 429 (Too Many Requests) errors
+**Purpose:** Deterministic exponential-backoff wrapper for HTTP 429 (Too Many Requests) errors.
 
 ### Key Design Decisions
 
 1. **Single Source of Truth:** LangChain's internal retry mechanisms are explicitly disabled (`max_retries=0`) in `llm_factory.py`. This ensures `resilience.py` remains the sole authority on network backoff, preventing stacked delays.
 
-2. **UI Integration via ContextVars:**
-   ```python
-   _retry_handler: contextvars.ContextVar[Optional[Callable[[RetryEvent], None]]]
-   
-   def set_retry_handler(handler: Callable[[RetryEvent], None]) -> None:
-       """Registers callback invoked on every retry attempt. Call from app.py before graph.invoke()."""
-       _retry_handler.set(handler)
-   ```
-   
-   The wrapper passes `RetryEvent` snapshots to the Streamlit UI, enabling a live, animated cooldown banner without the core engine knowing the UI exists.
+2. **UI Integration via ContextVars:** 
+   The wrapper utilizes `contextvars.ContextVar` to pass `RetryEvent` snapshots to the Streamlit UI. This enables a live, animated cooldown banner without the core engine importing Streamlit, maintaining strict architectural isolation between the backend compiler and the presentation layer.
 
 3. **Exponential Backoff with Jitter:**
    ```python
