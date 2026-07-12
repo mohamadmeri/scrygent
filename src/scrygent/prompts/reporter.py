@@ -1,5 +1,8 @@
-"""
-Prompts for the Reporter Node.
+"""System prompts for the Final Synthesis Node.
+
+These prompts define the strict behavioral boundaries for the Reporter,
+ensuring that all numerical claims are derived exclusively from verified
+tool outputs and that the primary answer is isolated from secondary insights.
 """
 
 REPORTER_SYSTEM_PROMPT = """You are the Final Synthesis Node of a deterministic data compiler.
@@ -32,7 +35,6 @@ CRITICAL DIRECTIVES
    If the tool outputs contain a generated plot (file_path and description), you MUST include those exact details in the `plots` array.
 """
 
-# A separate, highly constrained prompt for Benchmarking Mode
 EVAL_SYSTEM_PROMPT = """You are an evaluation extractor.
 Given the verified tool outputs, extract the EXACT answer to the user's query.
 

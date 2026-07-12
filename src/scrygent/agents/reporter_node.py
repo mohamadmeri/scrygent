@@ -1,22 +1,39 @@
-import logging
+"""Final synthesis node for the Scrygent compiler.
+
+This node consumes the verified JSON outputs from the deterministic
+execution engine and synthesizes the final user-facing report or
+benchmark answer. It also commits successful execution plans to
+long-term semantic memory.
+"""
+
 import json
+import logging
 from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from ..models.state import AgentState
-from ..models.outputs import AnalysisReport, DirectAnswer
 from ..llm_factory import get_structured_llm
-from ..resilience import resilient_call, ServiceExhaustedError
-from ..prompts.reporter import REPORTER_SYSTEM_PROMPT, EVAL_SYSTEM_PROMPT
 from ..memory.store import commit_experience
+from ..models.outputs import AnalysisReport, DirectAnswer
+from ..models.state import AgentState
+from ..prompts.reporter import EVAL_SYSTEM_PROMPT, REPORTER_SYSTEM_PROMPT
+from ..resilience import ServiceExhaustedError, resilient_call
 
 logger = logging.getLogger(__name__)
 
+
 def run_reporter_node(state: AgentState) -> dict[str, Any]:
-    """
-    LangGraph Node: The Reporter.
-    Synthesizes the final response from the verified JSON step_outputs.
+    """Synthesizes the final response from verified tool outputs.
+
+    Routes to either a full AnalysisReport or a strict DirectAnswer
+    based on the AgentState.eval_mode flag. Commits the execution plan
+    to semantic memory upon successful completion.
+
+    Args:
+        state: The current execution state containing step outputs and the user query.
+
+    Returns:
+        A dictionary containing the final_report and the updated execution_status.
     """
     logger.info("--- NODE: REPORTER (Eval Mode: %s) ---", state.eval_mode)
 
@@ -28,42 +45,33 @@ def run_reporter_node(state: AgentState) -> dict[str, Any]:
         target_schema = DirectAnswer if state.eval_mode else AnalysisReport
         system_prompt = EVAL_SYSTEM_PROMPT if state.eval_mode else REPORTER_SYSTEM_PROMPT
 
-        # Initialize OpenRouter LLM bound to the target schema
         structured_llm = get_structured_llm(pydantic_schema=target_schema)
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt)
-        ])
+        prompt = ChatPromptTemplate.from_messages([("system", system_prompt)])
 
         chain = prompt | structured_llm
-        
-        # Serialize step_outputs cleanly so the LLM doesn't choke on Python objects
+
+        # Serialize step_outputs cleanly to prevent LLM context pollution from Python objects
         outputs_json = json.dumps(state.step_outputs, indent=2)
 
-        # Invoke the LLM
         final_report = resilient_call(
-            lambda: chain.invoke({
-                "user_query": state.user_query,
-                "step_outputs": outputs_json
-            }),
+            lambda: chain.invoke({"user_query": state.user_query, "step_outputs": outputs_json}),
             service="Groq (Reporter)",
         )
 
         logger.info("Reporter successfully synthesized the final output.")
 
+        # Commit successful execution plans to long-term semantic memory
         if state.plan:
             commit_experience(state.user_query, state.plan)
 
-        # Return the state update
-        return {
-            "final_report": final_report,
-            "execution_status": "complete"
-        }
+        return {"final_report": final_report, "execution_status": "complete"}
 
     except ServiceExhaustedError as e:
         logger.error("Reporter Node aborted: %s exhausted its retry budget.", e.service)
         return {
-            "error_log": state.error_log + [
+            "error_log": state.error_log
+            + [
                 f"{e.service} is temporarily unavailable (rate limited after "
                 f"{e.attempts} attempts) while synthesizing the final report."
             ],
@@ -71,7 +79,4 @@ def run_reporter_node(state: AgentState) -> dict[str, Any]:
         }
     except Exception as e:
         logger.error("Reporter Node failed: %s", e)
-        return {
-            "error_log": state.error_log + [f"Reporter failed: {str(e)}"],
-            "execution_status": "aborted"
-        }
+        return {"error_log": state.error_log + [f"Reporter failed: {str(e)}"], "execution_status": "aborted"}

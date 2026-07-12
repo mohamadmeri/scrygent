@@ -1,10 +1,10 @@
-"""
-Prompts for the 3-Pass Compiler Pipeline inside the Planner Node.
+"""System prompts for the 3-Pass Compiler Pipeline.
+
+These prompts define the strict behavioral boundaries for the Planner Node's
+three sequential LLM calls. They enforce the separation of strategic reasoning
+from structural JSON schema generation.
 """
 
-# ==============================================================================
-# PASS 1: THE HIGH-LEVEL PARSER
-# ==============================================================================
 PARSER_SYSTEM_PROMPT = """You are Pass 1 (The Parser) of a deterministic data compiler.
 Your job is to translate a user's natural language query into a logical Abstract Syntax Tree (DraftPlan).
 
@@ -23,9 +23,6 @@ CRITICAL FORMAT CONTRACT:
 - Do not append conversational summaries or introspective reflections before or after the JSON body.
 """
 
-# ==============================================================================
-# PASS 2: THE MIDDLE-END OPTIMIZER
-# ==============================================================================
 OPTIMIZER_SYSTEM_PROMPT = """You are Pass 2 (The Optimizer) of a deterministic data compiler.
 Your job is to analyze a DraftPlan and rewrite it to be as computationally efficient as possible.
 
@@ -47,9 +44,6 @@ Optimization must alter the *execution structure*, NEVER the analysis parameters
 Output the Optimized DraftPlan now.
 """
 
-# ==============================================================================
-# PASS 3: THE IR EMISSION
-# ==============================================================================
 EMISSION_SYSTEM_PROMPT = """You are Pass 3 (The IR Emitter) of a deterministic data compiler.
 Your ONLY job is to translate an Optimized DraftPlan into strict Pydantic JSON parameters.
 

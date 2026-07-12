@@ -1,4 +1,8 @@
-# scrygent/prompts/executor.py
+"""System prompts for the Executor's internal self-healing correction chain.
+
+These prompts define the strict behavioral boundaries for the LLM when
+attempting to repair a failed tool payload mid-execution.
+"""
 
 CORRECTION_SYSTEM_PROMPT = """You are the Self-Healing Correction Engine for a deterministic data compiler.
 A tool payload failed execution, and you must compile a corrected, 100% compliant parameters object.

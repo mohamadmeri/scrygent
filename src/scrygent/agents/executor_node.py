@@ -1,24 +1,32 @@
-import logging
+"""Hybrid deterministic execution node.
+
+This node dispatches validated IR payloads to the deterministic tool suite.
+It handles specialized data-access patterns (e.g., DataFrame injection for
+analyze_data), manages the multi-step composition state transitions, and
+executes the internal self-healing correction chain on runtime failures.
+"""
+
 import json
+import logging
 import time
 from typing import Any
+
 from langchain_core.prompts import ChatPromptTemplate
 
-from ..models.state import AgentState
-from ..models.step_models import StepRecord
-from ..models.registry import TOOL_PARAM_MODELS
 from ..contracts import ToolName
 from ..llm_factory import get_structured_llm
-from ..resilience import resilient_call, ServiceExhaustedError
+from ..models.registry import TOOL_PARAM_MODELS
+from ..models.state import AgentState
+from ..models.step_models import StepRecord
 from ..prompts.executor import CORRECTION_SYSTEM_PROMPT
 from ..prompts.schema_formatter import TOOL_SPECIFICATIONS
-
+from ..resilience import ServiceExhaustedError, resilient_call
 from ..tools.analyze_data import analyze_data
-from ..tools.wrangling import filter_dataset, reset_dataset, normalize_column
-from ..tools.statistics import correlation, regression, detect_outliers, request_column_stats
-from ..tools.visualization import generate_plot
 from ..tools.arithmetic import derive_column, evaluate_metrics
 from ..tools.io import load_csv
+from ..tools.statistics import correlation, detect_outliers, regression, request_column_stats
+from ..tools.visualization import generate_plot
+from ..tools.wrangling import filter_dataset, normalize_column, reset_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +48,16 @@ MAX_RETRIES = 2
 
 
 def extract_single_tool_spec(tool_name: str) -> str:
+    """Extracts the isolated Markdown schema for a specific tool.
+
+    This prevents the LLM correction chain from being distracted by
+    irrelevant tool schemas, reducing token usage and hallucination risk.
+    """
     lines = TOOL_SPECIFICATIONS.split("\n")
-    
     capture = []
     started = False
 
     for line in lines:
-        # Check if it's a header AND contains our target tool name
         if line.strip().startswith("## ") and tool_name in line:
             started = True
             capture.append(line)
@@ -55,15 +66,21 @@ def extract_single_tool_spec(tool_name: str) -> str:
             if line.strip().startswith("## ") or line.strip().startswith("---"):
                 break
             capture.append(line)
-            
+
     if "SHARED FILTER SCHEMA" in TOOL_SPECIFICATIONS:
         shared_part = TOOL_SPECIFICATIONS.split("---")[-1]
         capture.append("\n---" + shared_part)
-        
+
     return "\n".join(capture)
 
 
-def _run_correction_chain(tool_name: ToolName, failed_params: dict[str, Any], error_message: str) -> dict[str, Any]:
+def _run_correction_chain(tool_name: ToolName, failed_params: dict[str, Any], error_message: str) -> Any:
+    """Invokes the LLM to repair a failed tool payload.
+
+    This internal loop isolates the self-healing mechanism from the main
+    LangGraph state, allowing rapid parameter correction without triggering
+    a full graph back-edge.
+    """
     logger.info("Triggering LLM Correction Chain for tool '%s'", tool_name)
 
     target_schema = TOOL_PARAM_MODELS[tool_name]
@@ -93,6 +110,12 @@ def _run_correction_chain(tool_name: ToolName, failed_params: dict[str, Any], er
 
 
 def run_executor_node(state: AgentState) -> dict[str, Any]:
+    """Dispatches the current step to the deterministic tool suite.
+
+    Handles specialized kwargs injection for state-mutating tools and
+    triggers the internal self-healing correction chain on validation
+    or runtime failures.
+    """
     logger.info("--- NODE: EXECUTOR (Step %d) ---", state.current_step_index)
 
     if not state.plan or state.current_step_index >= len(state.plan.steps):
@@ -101,6 +124,7 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
 
     step = state.plan.steps[state.current_step_index]
 
+    # Hard session-level guard: Prevent infinite lazy-fetch loops.
     if step.tool_name == ToolName.REQUEST_COLUMN_STATS and state.has_replanned:
         error_msg = (
             f"Step {step.step_id}: request_column_stats was invoked a second "
@@ -130,6 +154,10 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
         try:
             kwargs = current_parameters.copy()
 
+            # Specialized kwargs injection based on tool data-access patterns.
+            # analyze_data requires the loaded DataFrame, reset_dataset requires
+            # the immutable original path, and evaluate_metrics requires no path.
+            # All other tools consume the active current_csv_path.
             if step.tool_name == ToolName.ANALYZE_DATA:
                 kwargs["df"] = load_csv(state.current_csv_path)
             elif step.tool_name == ToolName.RESET_DATASET:
@@ -137,12 +165,11 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
             elif step.tool_name != ToolName.EVALUATE_METRICS:
                 kwargs["current_csv_path"] = state.current_csv_path
 
+            # Lazy-fetch validation: Ensure the Planner only requests stats
+            # for columns that were explicitly omitted during initial profiling.
             if step.tool_name == ToolName.REQUEST_COLUMN_STATS:
                 requested_columns = kwargs.get("columns", [])
-                missing_set = (
-                    set(state.data_profile.missing_detailed_stats)
-                    if state.data_profile else set()
-                )
+                missing_set = set(state.data_profile.missing_detailed_stats) if state.data_profile else set()
                 invalid_columns = [c for c in requested_columns if c not in missing_set]
                 if invalid_columns:
                     raise ValueError(
@@ -154,13 +181,16 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
 
             logger.info("Dispatching %s (Attempt %d/%d)...", step.tool_name, retry_count + 1, MAX_RETRIES + 1)
             tool_func = _TOOL_DISPATCHER[step.tool_name]
-            result = tool_func(**kwargs)
+            result = tool_func(**kwargs)  # type: ignore
             duration_ms = int((time.time() - start_time) * 1000)
 
+            # Lazy-fetch special case: Enrich the profile and trigger a one-time
+            # constrained re-plan loop. The Planner is strictly forbidden from
+            # requesting multiple lazy fetches in a single session.
             if step.tool_name == ToolName.REQUEST_COLUMN_STATS:
                 logger.info("Lazy fetch completed. Triggering one-time Re-Plan loop.")
 
-                new_profile = state.data_profile.model_copy(deep=True) # type: ignore
+                new_profile = state.data_profile.model_copy(deep=True)  # type: ignore
                 fetched_stats = result.get("detailed_stats", {})
 
                 new_profile.detailed_stats.update(fetched_stats)
@@ -183,9 +213,12 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
                     "execution_trace": state.execution_trace + [record],
                 }
 
+            # Standard execution success path
             new_outputs = state.step_outputs.copy()
             new_outputs[step.step_id] = result
 
+            # Multi-step composition: Update the active CSV path if the tool
+            # performed a state-mutating wrangling operation.
             new_csv_path = result.get("current_csv_path", state.current_csv_path)
             record = StepRecord(
                 step_id=step.step_id,
@@ -197,7 +230,7 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
             next_index = state.current_step_index + 1
             next_status = "complete" if next_index >= len(state.plan.steps) else "running"
 
-            # Saving the corrected parameters back to the plan so the UI trace is accurate
+            # Persist the corrected parameters back to the plan so the UI trace is accurate.
             new_plan = state.plan.model_copy(deep=True)
             new_plan.steps[state.current_step_index].parameters = current_parameters
 
@@ -213,20 +246,16 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
         except Exception as exc:
             last_error_msg = f"Runtime error in {step.tool_name}: {str(exc)}"
             logger.warning("Execution attempt %d failed. Error: %s", retry_count + 1, last_error_msg)
-            
+
             retry_count += 1
             if retry_count <= MAX_RETRIES:
                 try:
                     current_parameters = _run_correction_chain(
-                        tool_name=step.tool_name,
-                        failed_params=current_parameters,
-                        error_message=last_error_msg
+                        tool_name=step.tool_name, failed_params=current_parameters, error_message=last_error_msg
                     )
                 except ServiceExhaustedError as service_exc:
-                    # Distinct from a genuine correction-engine bug: the model
-                    # was never given a chance to repair the params because
-                    # Groq itself is rate limited. No point burning the
-                    # remaining self-healing attempts on a dead service.
+                    # The correction engine itself is rate-limited. We cannot
+                    # burn remaining self-healing attempts on a dead service.
                     error_msg = (
                         f"Step {step.step_id}: {service_exc.service} is temporarily "
                         f"unavailable (rate limited after {service_exc.attempts} attempts) "
@@ -249,7 +278,9 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
                     logger.error("Self-healing correction engine itself broke: %s", str(repair_exc))
                     break
 
-    logger.error("Step %s (%s) permanently failed execution after %d attempts.", step.step_id, step.tool_name, MAX_RETRIES + 1)
+    logger.error(
+        "Step %s (%s) permanently failed execution after %d attempts.", step.step_id, step.tool_name, MAX_RETRIES + 1
+    )
     record = StepRecord(
         step_id=step.step_id,
         tool_name=step.tool_name,

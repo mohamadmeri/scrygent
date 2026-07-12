@@ -1,50 +1,32 @@
-"""
-LangGraph Graph Builder.
+"""LangGraph orchestration and state routing.
 
-Wires the four nodes (profiler -> planner -> executor -> reporter) with
-conditional routing driven entirely by AgentState.execution_status.
-
-Routing contract (matches ARCHITECTURE.md + the one-shot lazy-fetch
-replan extension):
-    profiler  -> planner   (always, unless profiler aborted)
-    planner   -> executor  (always, unless planner aborted)
-    executor  -> executor  (execution_status == "running": more steps remain)
-    executor  -> planner   (execution_status == "replan": ONE-TIME lazy-fetch
-                             re-plan only -- guarded by state.has_replanned in
-                             executor_node.py so this edge can only fire once
-                             per session)
-    executor  -> reporter  (execution_status == "complete")
-    executor  -> abort     (execution_status == "aborted")
-    reporter  -> END       (always; reporter itself sets complete/aborted
-                             but has no outgoing branches -- it's terminal)
-
-NOTE: this file assumes AgentState.has_replanned (bool, default False) has
-been added per the earlier review. If it hasn't landed yet in state.py,
-the "replan" edge below has no protection against a second lazy-fetch
-loop and executor_node.py's own guard is the only thing stopping it.
+Wires the four core nodes (profiler -> planner -> executor -> reporter)
+with conditional routing driven entirely by AgentState.execution_status.
+This module contains no checkpointer; Scrygent is a single-pass,
+fire-and-forget engine where UI-side caching handles persistence.
 """
 
 import logging
+from typing import Any
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
-from ..models.state import AgentState
-from ..agents.profiler_node import run_profiler_node
-from ..agents.planner_node import run_planner_node
 from ..agents.executor_node import run_executor_node
+from ..agents.planner_node import run_planner_node
+from ..agents.profiler_node import run_profiler_node
 from ..agents.reporter_node import run_reporter_node
+from ..models.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
-def _abort_node(state: AgentState) -> dict:
-    """
-    Terminal abort handler. Does not mutate state further -- by the time
-    we're here, execution_status is already "aborted" and error_log
-    already carries the reason. This node exists only so the graph has
-    an explicit, loggable terminal step instead of routing straight to
-    END from multiple places, which would make the abort path invisible
-    in trace/debug output.
+def _abort_node(state: AgentState) -> dict[str, Any]:
+    """Terminal abort handler.
+
+    Provides an explicit, loggable terminal step for abort paths instead
+    of routing directly to END, ensuring the abort reason is visible in
+    trace and debug outputs.
     """
     logger.error(
         "--- GRAPH ABORTED --- last error: %s",
@@ -54,14 +36,21 @@ def _abort_node(state: AgentState) -> dict:
 
 
 def _route_after_profiler(state: AgentState) -> str:
+    """Routes execution based on the Profiler's completion status."""
     return "abort" if state.execution_status == "aborted" else "planner"
 
 
 def _route_after_planner(state: AgentState) -> str:
+    """Routes execution based on the Planner's compilation status."""
     return "abort" if state.execution_status == "aborted" else "executor"
 
 
 def _route_after_executor(state: AgentState) -> str:
+    """Routes execution based on the Executor's step-level status.
+
+    Enforces the one-shot lazy-fetch replan constraint and the
+    deterministic step-iteration loop.
+    """
     status = state.execution_status
     if status == "running":
         return "executor"
@@ -71,21 +60,20 @@ def _route_after_executor(state: AgentState) -> str:
         return "reporter"
     if status == "aborted":
         return "abort"
-    # Defensive: any other value is a programming error, not a valid
-    # routing decision. Fail loudly instead of silently defaulting
-    # somewhere -- an unhandled status here means a node returned
-    # something the router was never taught about.
+
+    # Defensive routing: Fail loudly on unrecognized states to prevent
+    # silent infinite loops or misrouted execution.
     raise ValueError(
         f"Executor produced unroutable execution_status: '{status}'. "
         "Expected one of: running, replan, complete, aborted."
     )
 
 
-def build_graph():
-    """
-    Constructs and compiles the Scrygent LangGraph application.
-    No checkpointer is used -- per DESIGN.md, this is a single-pass
-    fire-and-forget engine; st.session_state handles UI-side caching.
+def build_graph() -> CompiledStateGraph[AgentState]:
+    """Constructs and compiles the Scrygent LangGraph application.
+
+    Returns:
+        A compiled LangGraph StateGraph ready for invocation.
     """
     graph = StateGraph(AgentState)
 
