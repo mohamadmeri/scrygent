@@ -44,9 +44,8 @@ planner_debug.json
 !.vscode/extensions.json
 !.vscode/launch.json
 
-# Script artifacts and generated outputs
+# Script artifacts
 scripts/plot_outputs/
 scripts/*.txt
+scripts/*.jsonl
 scripts/*.png
-scripts/*.csv
-scripts/*.log
