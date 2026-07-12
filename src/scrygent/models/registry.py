@@ -1,25 +1,25 @@
+"""Tool-to-IR schema registry.
+
+Provides a single source of truth mapping deterministic tool identifiers
+to their strict Pydantic parameter models. Used by the Executor to
+validate LLM-generated payloads against the compiler's type boundaries.
+"""
+
 from ..base_model import ScrygentBaseModel
 from ..contracts import ToolName
 from ..ir import (
     AnalyzeDataParams,
-    FilterDatasetParams,
-    NormalizeColumnParams,
-    NoParams,
-    CorrelationParams,
-    RegressionParams,
-    OutlierParams,
     ColumnStatsParams,
-    PlotParams,
+    CorrelationParams,
     DeriveColumnParams,
     EvaluateMetricsParams,
+    FilterDatasetParams,
+    NoParams,
+    NormalizeColumnParams,
+    OutlierParams,
+    PlotParams,
+    RegressionParams,
 )
-
-
-# --- TOOL PARAM REGISTRY ---
-# Single source of truth: tool_name -> strict IR model. This is a shape
-# mapping, not procedural logic. The Planner uses this 
-# to validate that the LLM's proposed parameters match the 
-# tool's expected IR exactly.
 
 TOOL_PARAM_MODELS: dict[ToolName, type[ScrygentBaseModel]] = {
     ToolName.ANALYZE_DATA: AnalyzeDataParams,

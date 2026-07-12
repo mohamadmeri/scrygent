@@ -1,11 +1,11 @@
-import os
 import hashlib
 import logging
-from typing import Any, Optional
+import os
+from typing import Any
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 # Load .env file at module import time
 load_dotenv()
@@ -27,20 +27,18 @@ def _get_client() -> QdrantClient | None:
     return QdrantClient(url=url, api_key=api_key)
 
 
-def _ensure_collection(client: QdrantClient):
+def _ensure_collection(client: QdrantClient) -> None:
     """Creates the collection matching the 384-dimension schema definition."""
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
             # Configured as an unnamed default vector block for client.search / client.upsert alignment
-            vectors_config=VectorParams(size=VECTOR_DIMENSION_SIZE, distance=Distance.COSINE)
+            vectors_config=VectorParams(size=VECTOR_DIMENSION_SIZE, distance=Distance.COSINE),
         )
 
 
-def _embed_text_huggingface(text: str) -> Optional[list[float]]:
-    """
-    Embed text using the Hugging Face Inference API Feature Extraction Pipeline.
-    """
+def _embed_text_huggingface(text: str) -> list[float] | None:
+    """Embed text using the Hugging Face Inference API Feature Extraction Pipeline."""
     hf_token = os.getenv("HF_API_TOKEN")
     if not hf_token:
         logger.warning("HF_API_TOKEN environment variable not set; skipping memory.")
@@ -55,10 +53,10 @@ def _embed_text_huggingface(text: str) -> Optional[list[float]]:
     # Fixed: Targeting the explicit serverless feature-extraction router path
     api_url = os.getenv(
         "HF_EMBEDDING_API_URL",
-        "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
+        "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
     )
     headers = {"Authorization": f"Bearer {hf_token}"}
-    
+
     try:
         response = requests.post(
             api_url,
@@ -68,7 +66,7 @@ def _embed_text_huggingface(text: str) -> Optional[list[float]]:
         )
         response.raise_for_status()
         result = response.json()
-        
+
         # Guard clause: Handle structural variations from Hugging Face returns
         if isinstance(result, list) and len(result) > 0:
             # If the response is a 2D array, squeeze out the inner layer
@@ -91,37 +89,37 @@ def retrieve_experience(query: str, top_k: int = 2) -> str:
 
     info = client.get_collection(COLLECTION_NAME)
     print(f"DEBUG: Collection vector config: {info.config.params.vectors}")
-    
+
     vec = _embed_text_huggingface(query)
     if vec is None:
         logger.info("Embedding processing unavailable; bypassing cache retrieval.")
         return "No past experience available."
 
     try:
-            _ensure_collection(client)
+        _ensure_collection(client)
 
-            # Query via standard structural vector matching
-            response = client.query_points(
-                collection_name=COLLECTION_NAME,
-                query=vec,
-                using=VECTOR_NAME_TARGET,
-                limit=top_k,
-            )
+        # Query via standard structural vector matching
+        response = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vec,
+            using=VECTOR_NAME_TARGET,
+            limit=top_k,
+        )
 
-            if not response.points:
-                return "No past experience available."
+        if not response.points:
+            return "No past experience available."
 
-            experiences = []
-            # Iterate specifically over response.points
-            for hit in response.points:
-                score = getattr(hit, "score", None)
-                payload = getattr(hit, "payload", None) or {}
-                if score is not None and score > RELEVANCE_THRESHOLD:
-                    past_query = payload.get("query", "")
-                    past_plan = payload.get("plan_json", "")
-                    experiences.append(f"PAST QUERY: {past_query}\nSUCCESSFUL PLAN:\n{past_plan}")
+        experiences = []
+        # Iterate specifically over response.points
+        for hit in response.points:
+            score = getattr(hit, "score", None)
+            payload = getattr(hit, "payload", None) or {}
+            if score is not None and score > RELEVANCE_THRESHOLD:
+                past_query = payload.get("query", "")
+                past_plan = payload.get("plan_json", "")
+                experiences.append(f"PAST QUERY: {past_query}\nSUCCESSFUL PLAN:\n{past_plan}")
 
-            return "\n\n".join(experiences) if experiences else "No highly relevant experience found."
+        return "\n\n".join(experiences) if experiences else "No highly relevant experience found."
 
     except Exception as e:
         logger.error("Memory retrieval trace failed: %s", e, exc_info=True)
@@ -146,11 +144,9 @@ def commit_experience(query: str, plan: Any) -> None:
         plan_json = plan.model_dump_json(indent=2)
 
         point = PointStruct(
-            id=vector_id,
-            vector={VECTOR_NAME_TARGET: vec},
-            payload={"query": query, "plan_json": plan_json}
+            id=vector_id, vector={VECTOR_NAME_TARGET: vec}, payload={"query": query, "plan_json": plan_json}
         )
-        
+
         # Uses stable transaction payloads
         client.upsert(collection_name=COLLECTION_NAME, points=[point])
         logger.info("Successfully committed execution to long-term memory.")

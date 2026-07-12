@@ -1,3 +1,12 @@
+"""Hermetic JSON boundary and base model for the Scrygent compiler.
+
+This module defines the strict serialization boundary between the
+deterministic Pandas/NumPy execution engine and the non-deterministic
+LLM planning layer. It ensures that no Pandas C-types, NaNs, or
+infinite values cross into the JSON state, preventing downstream
+API serialization failures.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,13 +20,15 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class SanitizationError(ValueError):
-    """Raised when data cannot cross the JSON-safe boundary. Intercepted by self-heal."""
-
-    pass
+    """Raised when data cannot cross the JSON-safe boundary."""
 
 
 def _sanitize_scalar(value: Any) -> Any:
-    """Safely converts Pandas/NumPy C-types to native Python primitives."""
+    """Converts Pandas, NumPy, and standard C-types to native Python primitives.
+
+    This function enforces strict JSON compatibility by mapping non-standard
+    types to their closest native equivalents or None.
+    """
     if value is pd.NaT:
         return None
 
@@ -55,31 +66,34 @@ def _sanitize_scalar(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, bool)):
         return value
 
+    # Fallback for any other object that might be considered NA by Pandas
     try:
         if pd.isna(value):
             return None
     except (TypeError, ValueError):
         pass
 
-    raise SanitizationError(f"Value of type {type(value).__name__!r} ({value!r}) has no sanitization rule")
+    raise SanitizationError(f"Value of type {type(value).__name__!r} ({value!r}) has no sanitization rule.")
 
 
 def _recursive_sanitize(data: Any) -> Any:
-    """Recursively walks collections to sanitize all nested items."""
+    """Recursively walks collections to sanitize all nested items.
+
+    Prevents DataFrames and Series from crossing the model boundary,
+    enforcing the stateless-tool and strict-IR architectural constraints.
+    """
     if isinstance(data, BaseModel):
         return data
 
-    if isinstance(data, pd.DataFrame):
-        raise SanitizationError("DataFrame objects cannot cross the Scrygent model boundary")
-    if isinstance(data, pd.Series):
-        raise SanitizationError("Series objects cannot cross the Scrygent model boundary")
+    if isinstance(data, (pd.DataFrame, pd.Series)):
+        raise SanitizationError("Pandas DataFrame and Series objects cannot cross the Scrygent model boundary.")
 
     if isinstance(data, dict):
         clean: dict[Any, Any] = {}
         for k, v in data.items():
             ck = _sanitize_scalar(k)
             if not isinstance(ck, (str, int, float, bool, type(None))):
-                raise SanitizationError(f"Dictionary key {ck!r} is not JSON compatible")
+                raise SanitizationError(f"Dictionary key {ck!r} is not JSON compatible.")
             clean[ck] = _recursive_sanitize(v)
         return clean
 
@@ -93,17 +107,19 @@ def _recursive_sanitize(data: Any) -> Any:
 
 
 class ScrygentBaseModel(BaseModel):
-    # CRITICAL FIX: validate_assignment=True removed to prevent infinite loops in mode="after" validators
+    """Base model for all Scrygent state and IR schemas.
+
+    Enforces strict JSON compatibility at the instantiation boundary by
+    recursively sanitizing all input data before Pydantic field validation.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="wrap")
     @classmethod
     def _sanitize_input(cls, data: Any, handler: Any) -> Any:
-        """Global Gateway: Sanitizes the entire payload layout ONCE before
-        Pydantic drops keys or separates sub-fields.
-        """
+        """Sanitizes the entire payload layout before Pydantic processes it."""
         try:
-            # Check if input is a dictionary object first
             if isinstance(data, dict):
                 clean = _recursive_sanitize(data)
             else:
@@ -113,5 +129,4 @@ class ScrygentBaseModel(BaseModel):
         except Exception as exc:
             raise SanitizationError(f"Unexpected sanitization failure: {exc}") from exc
 
-        # Hand off the completely cleaned layout to the standard Pydantic compiler
         return handler(clean)

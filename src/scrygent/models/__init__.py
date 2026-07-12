@@ -1,15 +1,14 @@
-from ..base_model import ScrygentBaseModel
-from .outputs import (
-    CSVProfile,
-    PlotMetadata,
-    AnalysisReport,
-    DirectAnswer,
-)
-from .step_models import Step, Plan
+"""Public API for the models layer.
+
+Re-exports the state container, output schemas, step definitions, and the
+hermetic base model for JSON boundary sanitization.
+"""
+
+from .outputs import AnalysisReport, CSVProfile, DirectAnswer, PlotMetadata
 from .state import AgentState, JSONType, ToolOutput
+from .step_models import Plan, Step
 
 __all__ = [
-    "ScrygentBaseModel",
     "Step",
     "Plan",
     "CSVProfile",
