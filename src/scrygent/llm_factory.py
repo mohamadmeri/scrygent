@@ -1,9 +1,18 @@
-import os
+"""Factory for initializing provider-agnostic, structured LLM clients.
+
+This module abstracts the creation of LangChain chat models, enforcing
+strict structured output boundaries and centralizing provider resolution.
+It ensures that all LLM interactions are routed through a single,
+configurable entry point.
+"""
+
 import logging
+import os
 from typing import Any
 
-from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from .contracts.llm import LLMProvider
 
@@ -15,7 +24,8 @@ _DEFAULT_MODELS: dict[LLMProvider, str] = {
 }
 
 
-def _resolve_provider(explicit: "LLMProvider | str | None") -> LLMProvider:
+def _resolve_provider(explicit: LLMProvider | str | None) -> LLMProvider:
+    """Resolves the target LLM provider from explicit arguments or environment variables."""
     if explicit is not None:
         return LLMProvider(explicit)
 
@@ -23,49 +33,45 @@ def _resolve_provider(explicit: "LLMProvider | str | None") -> LLMProvider:
     try:
         return LLMProvider(raw)
     except ValueError:
-        raise ValueError(
-            f"Invalid SCRYGENT_LLM_PROVIDER='{raw}'. "
-            f"Must be one of: {[p.value for p in LLMProvider]}"
-        ) from None
+        valid = [p.value for p in LLMProvider]
+        raise ValueError(f"Invalid SCRYGENT_LLM_PROVIDER='{raw}'. Must be one of: {valid}") from None
 
 
 def _build_groq_llm(model_name: str) -> ChatGroq:
+    """Constructs a ChatGroq client with strict retry constraints."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY environment variable is missing.")
+
+    # max_retries=0 disables LangChain's internal Tenacity retry loop.
+    # This ensures that core/resilience.py's resilient_call() remains the
+    # single source of truth for rate-limit backoff, preventing stacked
+    # delays and invisible cooldowns.
     return ChatGroq(
-        api_key=api_key,  # type: ignore
-        model=model_name,
+        api_key=SecretStr(api_key),
+        model=model_name,  # type: ignore[call-arg]
         temperature=0.0,
-        # max_retries=0: langchain's own tenacity-based retry on 429s runs
-        # INSIDE this client, invisibly, before an exception ever reaches
-        # core/resilience.py's resilient_call(). That means the UI's cooldown
-        # banner would never fire for the first N retries, and Groq's own
-        # backoff would stack on top of ours. resilient_call() is the single
-        # source of truth for rate-limit retry/backoff -- see planner_node.py.
         max_retries=0,
     )
 
 
 def _build_openrouter_llm(model_name: str) -> ChatOpenAI:
+    """Constructs a ChatOpenAI client configured for the OpenRouter API."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY environment variable is missing.")
+
+    # max_retries=0 delegates all retry logic to the resilience wrapper.
     return ChatOpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,  # type: ignore
+        api_key=SecretStr(api_key),
         model=model_name,
         temperature=0.0,
-        # See _build_groq_llm: 0 so resilient_call() owns all retry/backoff.
         max_retries=0,
     )
 
 
-# Same idiom as _TOOL_DISPATCHER, _PLOT_HANDLERS, _NUMERIC_METHODS, etc.
-# throughout tools/: StrEnum keys, flat function dispatch. Not a class
-# hierarchy -- there's no polymorphic behavior here beyond "which client
-# do I construct," so a dispatch dict is the right amount of structure.
-_PROVIDER_BUILDERS = {
+_PROVIDER_BUILDERS: dict[LLMProvider, Any] = {
     LLMProvider.GROQ: _build_groq_llm,
     LLMProvider.OPENROUTER: _build_openrouter_llm,
 }
@@ -75,8 +81,19 @@ def get_structured_llm(
     pydantic_schema: type,
     model_name: str | None = None,
     provider: LLMProvider | str | None = None,
-    method: str | None = None
+    method: str | None = None,
 ) -> Any:
+    """Initializes a LangChain LLM client bound to a strict Pydantic schema.
+
+    Args:
+        pydantic_schema: The Pydantic model class to enforce on the LLM output.
+        model_name: Optional specific model identifier. Falls back to provider defaults.
+        provider: Optional explicit provider. Falls back to environment configuration.
+        method: Optional structured output method (e.g., 'function_calling', 'json_mode').
+
+    Returns:
+        A LangChain Runnable configured for structured output generation.
+    """
     resolved_provider = _resolve_provider(provider)
     resolved_model = model_name or _DEFAULT_MODELS[resolved_provider]
 
@@ -84,7 +101,10 @@ def get_structured_llm(
 
     logger.info(
         "Structured LLM initialized | provider=%s | model=%s | schema=%s | method=%s",
-        resolved_provider.value, resolved_model, pydantic_schema.__name__, method
+        resolved_provider.value,
+        resolved_model,
+        pydantic_schema.__name__,
+        method,
     )
 
     if method is not None:
