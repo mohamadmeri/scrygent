@@ -1,7 +1,15 @@
+"""Core I/O utilities for CSV loading, sampling, and temporary file management.
+
+Provides the foundational disk-boundary functions consumed by the Profiler
+and all state-mutating wrangling tools.
+"""
+
 import logging
 import os
 import tempfile
+from collections.abc import Hashable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -9,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 def load_csv(file_path: str | Path) -> pd.DataFrame:
-    """Loads a CSV file from disk into a pandas DataFrame."""
+    """Loads a CSV file from disk into a Pandas DataFrame.
+
+    Raises:
+        FileNotFoundError: If the target path does not exist.
+        ValueError: If the file cannot be parsed by the Pandas engine.
+    """
     path = Path(file_path)
     logger.info("Attempting to load CSV file from path: %s", path)
 
@@ -27,26 +40,27 @@ def load_csv(file_path: str | Path) -> pd.DataFrame:
         return df
     except (pd.errors.ParserError, pd.errors.EmptyDataError) as e:
         logger.error("Pandas parsing engine failed for file: %s. Error: %s", path, e)
-        raise ValueError(f"Failed to parse CSV file at '{path}'.") from e
+        raise ValueError(f"Failed to parse CSV file at '{path}'.") from None
 
 
-def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict]:
-    """Extracts a strictly bounded row sample for LLM formatting context."""
+def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict[Hashable, Any]]:
+    """Extracts a strictly bounded row sample for LLM formatting context.
+
+    Replaces NaN values with None to ensure strict JSON compatibility.
+    """
     if df.empty:
         return []
 
-    # Replace NaN with None so it becomes a valid JSON null
     head = df.head(n)
     safe_df = head.astype(object).where(pd.notna(head), None)
     return safe_df.to_dict(orient="records")
 
 
 def write_temp_file(suffix: str, prefix: str = "scrygent_") -> Path:
-    """Reserves a new temp file path with the given suffix and returns it,
-    without writing content. Callers write to the returned path themselves
-    (pandas .to_csv, matplotlib .savefig, etc.) -- this function's only
-    job is picking a safe, uniquely-named location, so every tool that
-    writes a temp artifact does it the same way.
+    """Reserves a new temporary file path with the given suffix.
+
+    Returns the Path object without writing content. Callers are
+    responsible for writing to the returned path.
     """
     fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=suffix)
     os.close(fd)
@@ -54,7 +68,10 @@ def write_temp_file(suffix: str, prefix: str = "scrygent_") -> Path:
 
 
 def write_temp_csv(df: pd.DataFrame, prefix: str = "scrygent_") -> Path:
-    """Writes a DataFrame to a new temp CSV and returns its path."""
+    """Writes a DataFrame to a new temporary CSV and returns its path.
+
+    Handles empty DataFrames gracefully by writing an empty file.
+    """
     path = write_temp_file(suffix=".csv", prefix=prefix)
 
     if df.empty and len(df.columns) == 0:

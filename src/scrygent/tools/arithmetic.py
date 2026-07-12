@@ -1,9 +1,15 @@
+"""Deterministic arithmetic engine using numexpr.
+
+Provides safe, row-wise cross-column mathematics and scalar metric
+evaluation without exposing Python's eval() or arbitrary code execution.
+"""
+
 import logging
 import re
 from pathlib import Path
 from typing import Any
 
-import numexpr as ne
+import numexpr as ne  # type: ignore
 import pandas as pd
 
 from .io import load_csv, write_temp_csv
@@ -12,11 +18,6 @@ logger = logging.getLogger(__name__)
 
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-# numexpr's built-in function names -- these appear as identifiers in an
-# expression (e.g. "sqrt(Revenue)") but are not column references. Kept
-# as an explicit whitelist so we can tell "identifier that must be a
-# column" apart from "identifier that's a numexpr function" without
-# guessing.
 _NUMEXPR_FUNCTIONS = {
     "sqrt",
     "abs",
@@ -38,11 +39,10 @@ _NUMEXPR_FUNCTIONS = {
 
 
 def _extract_column_refs(expression: str, df_columns: set[str]) -> set[str]:
-    """Extracts identifiers from the expression that correspond to real
-    DataFrame columns, excluding numexpr's own function names. Any
-    identifier that is neither a known column nor a numexpr function is
-    an error -- this is what stops the expression from silently reading
-    stray names (or in principle, referencing something it shouldn't).
+    """Extracts valid DataFrame column references from a numexpr expression.
+
+    Raises a ValueError if the expression references unknown identifiers
+    that are neither valid columns nor recognized numexpr functions.
     """
     identifiers = set(_IDENTIFIER_PATTERN.findall(expression))
     unknown = identifiers - df_columns - _NUMEXPR_FUNCTIONS
@@ -54,28 +54,27 @@ def _extract_column_refs(expression: str, df_columns: set[str]) -> set[str]:
 
 
 def _require_numeric(df: pd.DataFrame, columns: set[str]) -> None:
+    """Validates that all referenced columns are numeric."""
     non_numeric = [c for c in columns if not pd.api.types.is_numeric_dtype(df[c])]
     if non_numeric:
         raise ValueError(f"Expression references non-numeric column(s): {non_numeric}")
 
 
-# --- derive_column: row-wise cross-column math, materialized as a new column ---
 def derive_column(
     current_csv_path: Path,
     new_column: str,
     expression: str,
 ) -> dict[str, Any]:
-    """Evaluates a numexpr expression row-wise across existing numeric
-    columns and writes the result as a new column, e.g.
-    expression="Revenue - Cost" with new_column="Profit".
+    """Evaluates a numexpr expression row-wise and writes the result as a new column.
 
-    Writes the transformed dataset to a new temp CSV and updates
-    current_csv_path, following the same wrangling-tool convention as
-    filter_dataset/normalize_column (never overwrites original_csv_path).
+    Args:
+        current_csv_path: Path to the active CSV dataset.
+        new_column: Name of the new column to create.
+        expression: The numexpr-compatible mathematical expression.
 
     Returns:
-        {"current_csv_path": str, "new_column": str, "expression": str,
-         "sample": {"min": ..., "max": ..., "mean": ...}}
+        A dictionary containing the new CSV path, column name, expression,
+        and a sample of the new column's statistics.
     """
     if not expression.strip():
         raise ValueError("derive_column requires a non-empty expression.")
@@ -95,12 +94,11 @@ def derive_column(
     local_dict = {col: df[col].to_numpy() for col in referenced_columns}
 
     try:
-        # global_dict={} -- explicitly denies numexpr any fallback to the
-        # calling frame's globals, so the only names resolvable are the
-        # ones we put in local_dict.
+        # global_dict={} explicitly denies numexpr any fallback to the calling frame's globals.
         result = ne.evaluate(expression, local_dict=local_dict, global_dict={})
     except Exception as e:
-        raise ValueError(f"Failed to evaluate expression '{expression}': {e}") from e
+        # Suppress the numexpr traceback to keep the LLM correction chain clean.
+        raise ValueError(f"Failed to evaluate expression '{expression}': {e}") from None
 
     df[new_column] = result
     new_path = write_temp_csv(df, prefix="scrygent_derive_")
@@ -117,26 +115,18 @@ def derive_column(
     }
 
 
-# --- evaluate_metrics: scalar math over already-computed step_outputs values ---
-
-
 def evaluate_metrics(
     expression: str,
     values: dict[str, float],
 ) -> dict[str, Any]:
-    """Evaluates a numexpr expression over a small dict of already-computed
-    scalar values (e.g. two prior analyze_data results), rather than
-    over a DataFrame. This covers the common evals pattern of deriving a
-    ratio/delta from two previous steps' aggregates without re-reading
-    the CSV or risking a fresh hallucinated computation --
-    e.g. values={"total_profit": 42000, "total_revenue": 150000},
-    expression="total_profit / total_revenue" -> profit margin.
+    """Evaluates a numexpr expression over a dictionary of pre-computed scalar values.
 
-    Same safety guarantee as derive_column: numexpr, explicit
-    local_dict, no global_dict fallback.
+    Args:
+        expression: The numexpr-compatible mathematical expression.
+        values: Dictionary of named scalar values to inject into the expression.
 
     Returns:
-        {"expression": str, "result": float}
+        A dictionary containing the expression and the computed float result.
     """
     if not expression.strip():
         raise ValueError("evaluate_metrics requires a non-empty expression.")
@@ -154,6 +144,6 @@ def evaluate_metrics(
     try:
         result = ne.evaluate(expression, local_dict=local_dict, global_dict={})
     except Exception as e:
-        raise ValueError(f"Failed to evaluate expression '{expression}': {e}") from e
+        raise ValueError(f"Failed to evaluate expression '{expression}': {e}") from None
 
     return {"expression": expression, "result": float(result)}
