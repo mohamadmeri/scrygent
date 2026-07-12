@@ -1,7 +1,10 @@
 <div align="center">
-  <!-- TODO: Add your custom logo here -->
-  <!-- <img src="docs/assets/logo.png" alt="Scrygent Logo" width="120" /> -->
-  
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark-theme.jpeg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light-theme.jpeg">
+    <img alt="Scrygent Logo" src="docs/assets/logo-light-theme.png" width="120">
+  </picture>
+
   # Scrygent
   
   **A Strictly Typed Compiler Engine for Data Analysis**
@@ -27,16 +30,16 @@
 
 ---
 
-## 📑 Navigation
+## Navigation
 
 | Module | Description |
 | :--- | :--- |
-| [**🏗️ Architecture**](docs/ARCHITECTURE.md) | Deep dive into the 3-pass compiler, dependency hierarchy, and self-healing loops. |
-| [**📊 Benchmarks**](docs/BENCHMARKS.md) | Empirical evaluation metrics against DABench and DataBench Lite. *(WIP)* |
+| [**Architecture**](docs/ARCHITECTURE.md) | Deep dive into the 3-pass compiler, dependency hierarchy, and self-healing loops. |
+| [**Benchmarks (WIP)**](#benchmarks--evaluation) | Empirical evaluation metrics against DABench and DataBench Lite. *(WIP)* |
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 Scrygent abandons the fragile "ReAct" loop of generating and executing arbitrary Python. Instead, it utilizes a **Plan-and-Execute Compiler** pipeline.
 
@@ -60,7 +63,7 @@ flowchart LR
 
 ---
 
-## ⚙️ Key Engineering Highlights
+## Key Engineering Highlights
 
 These implementation details form the core of Scrygent's reliability and are designed to be defended in technical interviews:
 
@@ -71,7 +74,7 @@ These implementation details form the core of Scrygent's reliability and are des
 *   **Semantic Experience Replay:** Successful execution plans are automatically embedded and stored in a Qdrant vector database. Future queries retrieve structurally similar past plans as few-shot examples, allowing the planner to improve over time without retraining.
 
 ---
-## 📊 Benchmarks & Evaluation
+## Benchmarks & Evaluation
 
 Scrygent is evaluated against industry-standard benchmarks to validate its deterministic approach against code-generation agents.
 
@@ -102,11 +105,11 @@ We generate "poisoned" variants of clean benchmark CSVs to test error handling:
 - Mixed-type columns (numeric + string artifacts)
 - Missing headers, offset data rows
 
-👉 **See `scripts/run_benchmark.py` for the evaluation harness.**
+**See [`scripts/run_benchmark.py`](scripts/run_benchmark.py) for the evaluation harness.**
 
 ---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Layer | Technology | Rationale |
 | :--- | :--- | :--- |
@@ -121,7 +124,7 @@ We generate "poisoned" variants of clean benchmark CSVs to test error handling:
 
 ---
 
-## 🚀 Local Development
+## Local Development
 
 Clone the repository and initialize the environment using `uv` for fast, deterministic builds:
 
@@ -154,8 +157,8 @@ uv run streamlit run app.py
 
 ---
 
-## 📚 Deep Dive Documentation
+## Deep Dive Documentation
 
 For a comprehensive explanation of the compiler architecture, the Dependency Golden Rule, graph routing mechanics, and the self-healing correction loops, see:
 
-👉 **[Read the Architecture Document](docs/ARCHITECTURE.md)**
+**[Read the Architecture Document](docs/ARCHITECTURE.md)**
