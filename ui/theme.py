@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-# Warm dark palette
+# Claude-inspired warm dark palette
 BG = "#1E1E1E"
 SURFACE = "#2A2A2A"
 BORDER = "rgba(255, 255, 255, 0.08)"
@@ -10,9 +10,9 @@ TEXT = "#F5F5F5"
 TEXT_MUTED = "#A0A0A0"
 
 # Semantic accents
-ACCENT_OK = "#84A571"  # Sage green for verified/healthy
-ACCENT_WARN = "#E5C07B"  # Soft gold for cooldown
-ACCENT_BAD = "#D97757"  # Warm clay for aborted/error
+ACCENT_OK = "#84A571"
+ACCENT_WARN = "#E5C07B"
+ACCENT_BAD = "#D97757"
 
 NODE_ORDER = ["Profiler", "Planner", "Executor", "Reporter"]
 NODE_KEY_MAP = {
@@ -38,12 +38,12 @@ def inject_css() -> None:
     st.markdown(
         f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
         html, body, [class*="css"] {{ font-family: 'Inter', -apple-system, sans-serif; color: {TEXT}; }}
         .stApp {{ background: {BG}; }}
         
-        /* Hide default Streamlit chrome for a product feel */
+        /* Hide default Streamlit chrome */
         #MainMenu, footer, header {{ visibility: hidden; }}
         .block-container {{ padding-top: 2rem; }}
         
@@ -80,6 +80,54 @@ def inject_css() -> None:
             border: 1px solid rgba(229, 192, 123, 0.35); border-radius: 8px;
             padding: 12px 16px; margin-bottom: 16px;
         }}
+
+        /* Unified Topbar Styling */
+        .sg-topbar {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 24px;
+            background: {SURFACE};
+            border: 1px solid {BORDER};
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            color: {TEXT};
+        }}
+        .sg-brand {{
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .sg-brand-mark {{ color: {ACCENT_OK}; font-size: 1.2rem; }}
+        .sg-divider {{ color: #555; margin: 0 4px; }}
+        .sg-subtitle {{
+            font-weight: 400;
+            color: {TEXT_MUTED};
+            font-size: 0.9rem;
+        }}
+        .sg-status-group {{
+            display: flex;
+            gap: 24px;
+        }}
+        .sg-status-pill {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: {TEXT_MUTED};
+        }}
+        .sg-dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }}
+        .sg-dot-ok {{ background: {ACCENT_OK}; box-shadow: 0 0 6px {ACCENT_OK}; }}
+        .sg-dot-bad {{ background: {ACCENT_BAD}; box-shadow: 0 0 6px {ACCENT_BAD}; }}
         </style>
         """,
         unsafe_allow_html=True,

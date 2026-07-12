@@ -34,12 +34,18 @@ def _render_upload_view() -> None:
     st.markdown("### Upload Dataset")
     st.caption("Scrygent requires a structured CSV to begin deterministic compilation.")
 
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader(
+        "Upload CSV",
+        type=["csv"],
+        label_visibility="collapsed",
+        help="Maximum file size: 200 MB. The file is processed locally and never leaves your environment.",
+    )
+
+    # Explicitly state the limit below the uploader
+    st.caption("⚠️ **Max upload size:** 200 MB")
 
     if uploaded_file:
-        # Pre-flight validation: `type=["csv"]` only checks the file extension.
-        # A renamed non-CSV file or bad encoding would otherwise fail later
-        # inside the Profiler node. Catch it here with a fast, cheap parse.
+        # Pre-flight validation logic remains exactly the same...
         try:
             uploaded_file.seek(0)
             pd.read_csv(uploaded_file, nrows=5)
@@ -89,8 +95,8 @@ def _render_chat_interface() -> None:
 
             try:
                 initial_state = AgentState(
-                    original_csv_path=str(st.session_state.csv_path),  # type: ignore[arg-type]
-                    current_csv_path=str(st.session_state.csv_path),  # type: ignore[arg-type]
+                    original_csv_path=Path(st.session_state.csv_path),
+                    current_csv_path=Path(st.session_state.csv_path),
                     user_query=st.session_state.query,
                 )
                 payload = initial_state.model_dump(mode="json")

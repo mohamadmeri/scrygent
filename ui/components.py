@@ -49,19 +49,33 @@ def render_topbar() -> None:
     groq_ok = check_groq_health()
     qdrant_ok = check_qdrant_health()
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        st.markdown("##### ◆ SCRYGENT")
-    with col2:
-        st.markdown(
-            "<div style='text-align:center; color:#A0A0A0; font-size:0.8rem;'>Deterministic Data Compiler</div>",
-            unsafe_allow_html=True,
-        )
-    with col3:
-        c1, c2 = st.columns(2)
-        c1.metric("Groq", "Online" if groq_ok else "Offline")
-        c2.metric("Qdrant", "Online" if qdrant_ok else "Offline")
-    st.divider()
+    groq_dot = "sg-dot-ok" if groq_ok else "sg-dot-bad"
+    groq_text = "ONLINE" if groq_ok else "OFFLINE"
+
+    qdrant_dot = "sg-dot-ok" if qdrant_ok else "sg-dot-bad"
+    qdrant_text = "ONLINE" if qdrant_ok else "OFFLINE"
+
+    st.markdown(
+        f"""
+        <div class="sg-topbar">
+            <div class="sg-brand">
+                <span class="sg-brand-mark">◆</span> 
+                SCRYGENT 
+                <span class="sg-divider">|</span> 
+                <span class="sg-subtitle">Deterministic Data Compiler</span>
+            </div>
+            <div class="sg-status-group">
+                <div class="sg-status-pill">
+                    <span class="sg-dot {groq_dot}"></span> GROQ: {groq_text}
+                </div>
+                <div class="sg-status-pill">
+                    <span class="sg-dot {qdrant_dot}"></span> QDRANT: {qdrant_text}
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_pipeline(active_node: str | None, completed: set[str], errored: bool) -> None:
@@ -93,7 +107,9 @@ def render_control_panel() -> None:
         st.markdown("##### Active Dataset")
         if st.session_state.csv_path:
             st.code(st.session_state.csv_path.name, language=None)
-            if st.button("Reset Session", use_container_width=True, type="secondary"):
+
+            # This ensures users can recover from aborted states or start a new query.
+            if st.button("🔄 Reset Session", use_container_width=True, type="secondary"):
                 _reset_session()
                 st.rerun()
         else:
