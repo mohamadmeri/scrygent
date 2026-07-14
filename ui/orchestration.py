@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from scrygent.graph.builder import build_graph
 from scrygent.resilience import RetryEvent, ServiceExhaustedError, set_retry_handler
@@ -27,8 +28,8 @@ def initialize_session_state() -> None:
 
 def run_graph_with_resilience(
     payload: dict[str, Any],
-    pipeline_placeholder: st.delta_generator.DeltaGenerator,  # type: ignore
-    cooldown_placeholder: st.delta_generator.DeltaGenerator,  # type: ignore
+    pipeline_placeholder: DeltaGenerator,
+    cooldown_placeholder: DeltaGenerator,
 ) -> tuple[dict[str, Any] | None, ServiceExhaustedError | None]:
     """Streams the graph node-by-node and wires the backend retry wrapper to a live UI banner.
 

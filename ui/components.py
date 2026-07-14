@@ -8,12 +8,18 @@ import streamlit as st
 from .theme import NODE_ORDER
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def check_groq_health() -> bool:
-    """Pings the Groq models endpoint. Returns False on any failure."""
+@st.cache_data(ttl=5, show_spinner=False)  # Short TTL to react faster to cooldowns
+def check_groq_health() -> str:
+    """Returns 'ok', 'cooldown', or 'offline'."""
+    from scrygent.resilience import is_system_cooling_down
+
+    # If the backend is actively cooling down from a 429, show Amber
+    if is_system_cooling_down():
+        return "cooldown"
+
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return False
+        return "offline"
     try:
         import requests
 
@@ -22,9 +28,9 @@ def check_groq_health() -> bool:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=4,
         )
-        return resp.status_code == 200
+        return "ok" if resp.status_code == 200 else "offline"
     except Exception:
-        return False
+        return "offline"
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -46,11 +52,16 @@ def check_qdrant_health() -> bool:
 
 def render_topbar() -> None:
     """Renders the global status bar indicating backend service health."""
-    groq_ok = check_groq_health()
+    groq_status = check_groq_health()
     qdrant_ok = check_qdrant_health()
 
-    groq_dot = "sg-dot-ok" if groq_ok else "sg-dot-bad"
-    groq_text = "ONLINE" if groq_ok else "OFFLINE"
+    # Map status to CSS classes and text
+    if groq_status == "ok":
+        groq_dot, groq_text = "sg-dot-ok", "ONLINE"
+    elif groq_status == "cooldown":
+        groq_dot, groq_text = "sg-dot-warn", "COOLDOWN"  # Amber/Yellow
+    else:
+        groq_dot, groq_text = "sg-dot-bad", "OFFLINE"
 
     qdrant_dot = "sg-dot-ok" if qdrant_ok else "sg-dot-bad"
     qdrant_text = "ONLINE" if qdrant_ok else "OFFLINE"

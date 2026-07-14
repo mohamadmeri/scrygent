@@ -8,6 +8,8 @@ configurable entry point.
 
 import logging
 import os
+import threading
+import time
 from typing import Any
 
 from langchain_groq import ChatGroq
@@ -18,6 +20,45 @@ from .contracts.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+# GLOBAL REQUEST PACER (Proactive Rate Limit Avoidance)
+_pacer_lock = threading.Lock()
+_last_request_time = 0.0
+_pacer_enabled = os.getenv("SCRYGENT_PACE_REQUESTS", "false").lower() == "true"
+_pacer_interval = float(os.getenv("SCRYGENT_PACE_INTERVAL", "2.0"))  # 2.0s = 30 RPM
+
+
+def _pace_request() -> None:
+    """Enforces a minimum interval between LLM requests to prevent 429s."""
+    if not _pacer_enabled:
+        return
+
+    global _last_request_time
+    with _pacer_lock:
+        now = time.time()
+        elapsed = now - _last_request_time
+        if elapsed < _pacer_interval:
+            sleep_time = _pacer_interval - elapsed
+            logger.debug("Pacing request: sleeping for %.2fs to respect RPM limits.", sleep_time)
+            time.sleep(sleep_time)
+        _last_request_time = time.time()
+
+
+def _wrap_with_pacer(llm: Any) -> Any:
+    """Wraps a LangChain LLM to enforce request pacing before structured output binding."""
+    if not _pacer_enabled:
+        return llm
+
+    original_invoke = llm.invoke
+
+    def paced_invoke(*args: Any, **kwargs: Any) -> Any:
+        _pace_request()
+        return original_invoke(*args, **kwargs)
+
+    llm.invoke = paced_invoke
+    return llm
+
+
+# LLM FACTORY
 _DEFAULT_MODELS: dict[LLMProvider, str] = {
     LLMProvider.GROQ: "llama-3.3-70b-versatile",
     LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct",
@@ -99,12 +140,16 @@ def get_structured_llm(
 
     llm = _PROVIDER_BUILDERS[resolved_provider](resolved_model)
 
+    # Apply the pacer before binding structured output
+    llm = _wrap_with_pacer(llm)
+
     logger.info(
-        "Structured LLM initialized | provider=%s | model=%s | schema=%s | method=%s",
+        "Structured LLM initialized | provider=%s | model=%s | schema=%s | method=%s | pacer=%s",
         resolved_provider.value,
         resolved_model,
         pydantic_schema.__name__,
         method,
+        _pacer_enabled,
     )
 
     if method is not None:

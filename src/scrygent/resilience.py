@@ -15,6 +15,7 @@ import contextvars
 import logging
 import random
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,7 +25,17 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# COOLDOWN STATE TRACKER (For UI Integration)
+_cooldown_lock = threading.Lock()
+_is_cooling_down = False
 
+
+def is_system_cooling_down() -> bool:
+    """Returns True if the resilience layer is currently in a rate-limit cooldown."""
+    return _is_cooling_down
+
+
+## EVENTS & ERRORS
 @dataclass
 class RetryEvent:
     """Snapshot of a retry attempt, passed to UI callbacks for cooldown rendering."""
@@ -70,15 +81,12 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
 
 def _extract_retry_after(exc: Exception) -> float | None:
-    """Extracts the server-suggested wait time from a 429 response.
-
-    Checks standard headers (retry-after, x-ratelimit-reset-after) and
-    falls back to parsing embedded error messages for Groq compatibility.
-    """
+    """Extracts the server-suggested wait time, including Groq-specific headers."""
     response = getattr(exc, "response", None)
     if response is not None:
         headers = getattr(response, "headers", {}) or {}
-        for key in ("retry-after", "Retry-After", "x-ratelimit-reset-after"):
+        # Groq returns 'x-ratelimit-reset-requests' with the exact seconds until reset
+        for key in ("retry-after", "Retry-After", "x-ratelimit-reset-after", "x-ratelimit-reset-requests"):
             if key in headers:
                 try:
                     return float(headers[key])
@@ -125,6 +133,8 @@ def resilient_call(
         ServiceExhaustedError: If all attempts fail with rate limit errors.
         Exception: Any non-rate-limit exception raised by the callable.
     """
+    global _is_cooling_down
+
     handler = on_retry or get_retry_handler()
     attempt = 0
     last_error: Exception | None = None
@@ -144,30 +154,29 @@ def resilient_call(
             wait = _extract_retry_after(exc)
             if wait is None:
                 wait = min(base_delay * (2 ** (attempt - 1)), max_delay)
-
-            # Add jitter to prevent thundering herd on shared API quotas
             wait += random.uniform(0, 0.5)
 
             logger.warning(
-                "%s rate limited (attempt %d/%d). Cooling down for %.1fs.",
-                service,
-                attempt,
-                max_attempts,
-                wait,
+                "%s rate limited (attempt %d/%d). Cooling down for %.1fs.", service, attempt, max_attempts, wait
             )
 
-            if handler:
-                handler(
-                    RetryEvent(
-                        service=service,
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        wait_seconds=wait,
-                        error=exc,
+            # Activate cooldown state for UI
+            with _cooldown_lock:
+                _is_cooling_down = True
+
+            try:
+                if handler:
+                    handler(
+                        RetryEvent(
+                            service=service, attempt=attempt, max_attempts=max_attempts, wait_seconds=wait, error=exc
+                        )
                     )
-                )
-            else:
-                time.sleep(wait)
+                else:
+                    time.sleep(wait)
+            finally:
+                # Deactivate cooldown state
+                with _cooldown_lock:
+                    _is_cooling_down = False
 
     # last_error is guaranteed to be set if we exit the loop without returning
     raise ServiceExhaustedError(service, max_attempts, last_error)  # type: ignore[arg-type]
