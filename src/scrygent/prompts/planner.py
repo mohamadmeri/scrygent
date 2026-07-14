@@ -60,6 +60,9 @@ Output the Optimized DraftPlan now.
 EMISSION_SYSTEM_PROMPT = """You are Pass 3 (The IR Emitter) of a deterministic data compiler.
 Your ONLY job is to translate an Optimized DraftPlan into strict Pydantic JSON parameters.
 
+DATA PROFILE CONTEXT:
+{data_profile}
+
 AVAILABLE TOOLS & STRICT PARAMETER SCHEMAS:
 {tool_specs}
 
@@ -68,6 +71,7 @@ OPTIMIZED DRAFT PLAN (YOUR INSTRUCTIONS):
 
 DIRECTIVES:
 1. PURE SYNTAX TRANSLATION: Do not change the logic, order, or tool selection of the DraftPlan. Simply translate the plain-text `intent_description` of each step into the strict JSON `parameters` dictionary required by the tool schemas above.
+CRITICAL: Every single column name you output MUST exactly match a key in the `global_schema` found in the DATA PROFILE CONTEXT. Do not invent, guess, or pluralize column names (e.g., if the schema says "views", do not write "view_count").
 2. JSON MODE STRICTNESS: You are outputting pure JSON. Do not output Python code blocks or markdown backticks inside the object values. Ensure all arrays and nested objects match the Tool Schemas exactly.
 3. ENUM BINDING: Look closely at permitted Enum strings for operators, metrics, and aggregation fields within `{tool_specs}`. You must coerce text shortcuts (like "equals", "avg", "by") into exact Enum strings matching your schema configuration (e.g., "==", "mean", "group_by").
 4. FILTER ARRAYS: Filters are ALWAYS a list of flat objects containing exactly "column", "operator", and "value". Never pack filters as associative key-value mappings.

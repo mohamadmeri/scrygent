@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any
 
+from langchain_core.runnables import RunnableLambda
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
@@ -43,25 +44,10 @@ def _pace_request() -> None:
         _last_request_time = time.time()
 
 
-def _wrap_with_pacer(llm: Any) -> Any:
-    """Wraps a LangChain LLM to enforce request pacing before structured output binding."""
-    if not _pacer_enabled:
-        return llm
-
-    original_invoke = llm.invoke
-
-    def paced_invoke(*args: Any, **kwargs: Any) -> Any:
-        _pace_request()
-        return original_invoke(*args, **kwargs)
-
-    llm.invoke = paced_invoke
-    return llm
-
-
 # LLM FACTORY
 _DEFAULT_MODELS: dict[LLMProvider, str] = {
     LLMProvider.GROQ: "llama-3.3-70b-versatile",
-    LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct",
+    LLMProvider.OPENROUTER: "meta-llama/llama-3.3-70b-instruct:free",
 }
 
 
@@ -140,9 +126,6 @@ def get_structured_llm(
 
     llm = _PROVIDER_BUILDERS[resolved_provider](resolved_model)
 
-    # Apply the pacer before binding structured output
-    llm = _wrap_with_pacer(llm)
-
     logger.info(
         "Structured LLM initialized | provider=%s | model=%s | schema=%s | method=%s | pacer=%s",
         resolved_provider.value,
@@ -152,7 +135,20 @@ def get_structured_llm(
         _pacer_enabled,
     )
 
+    # 1. Bind the structured output
     if method is not None:
-        return llm.with_structured_output(pydantic_schema, method=method)
+        structured_llm = llm.with_structured_output(pydantic_schema, method=method)
+    else:
+        structured_llm = llm.with_structured_output(pydantic_schema)
 
-    return llm.with_structured_output(pydantic_schema)
+    # 2. Safely inject the pacer using a LangChain pipeline (RunnableLambda)
+    if _pacer_enabled:
+
+        def _pace_and_pass(x: Any) -> Any:
+            _pace_request()
+            return x
+
+        # This creates a chain: run _pace_and_pass FIRST, then pass the input to the LLM
+        return RunnableLambda(_pace_and_pass) | structured_llm
+
+    return structured_llm

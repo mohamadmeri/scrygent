@@ -64,8 +64,8 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
         tool_specs = get_tool_specs()
 
         # Initialize LLMs for Draft and Final passes
-        draft_llm = get_structured_llm(pydantic_schema=DraftPlan, provider="groq")
-        final_llm = get_structured_llm(pydantic_schema=Plan, provider="groq", method="json_mode")
+        draft_llm = get_structured_llm(pydantic_schema=DraftPlan)
+        final_llm = get_structured_llm(pydantic_schema=Plan, method="json_mode")
 
         # PASS 1: PARSER (Generate AST)
         logger.info("Planner Pass 1: Parsing Abstract Intent...")
