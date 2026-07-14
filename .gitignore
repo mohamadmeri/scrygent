@@ -52,3 +52,5 @@ scripts/*.png
 
 # Streamlit secrets
 .streamlit/secrets.toml
+
+eval_reports/

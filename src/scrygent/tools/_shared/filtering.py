@@ -5,6 +5,7 @@ Ensures a single, deterministic filter grammar and implementation across
 all data subsetting operations.
 """
 
+import difflib
 from typing import Any
 
 import pandas as pd
@@ -59,9 +60,22 @@ def apply_filters(df: pd.DataFrame, filters: list[dict[str, Any]]) -> pd.DataFra
                 raise ValueError(f"Operator '{op.value}' with None value is not supported. Use '==' or '!='.")
             continue
 
-        # Dispatch filtering logic based on operator
         if op == FilterOperator.EQ:
-            working_df = working_df[working_df[col] == val]
+            mask = working_df[col] == val
+
+            # TIER 2 DEFENSE: If exact match fails, use difflib to suggest close matches
+            if not mask.any() and isinstance(val, str):
+                unique_vals = working_df[col].dropna().astype(str).unique()
+                close_matches = difflib.get_close_matches(val, unique_vals, n=3, cutoff=0.6)
+                if close_matches:
+                    raise ValueError(
+                        f"Filter returned 0 rows. No exact match for '{val}' in column '{col}'. "
+                        f"Did you mean one of these exact values: {close_matches}?"
+                    )
+
+            working_df = working_df[mask]
+
+        # Dispatch filtering logic based on operator
         elif op == FilterOperator.NEQ:
             working_df = working_df[working_df[col] != val]
         elif op == FilterOperator.GT:

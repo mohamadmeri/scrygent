@@ -16,7 +16,13 @@ PAST SUCCESSFUL EXECUTIONS (EXPERIENCE):
 
 DIRECTIVES:
 1. FOCUS ON LOGIC, NOT SYNTAX: Do not worry about exact JSON schemas. Describe parameters in plain text inside the `intent_description` field (e.g., "Filter out outliers in total_amount").
-2. THE LAZY FETCH BOUNDARY: Inspect the "missing_detailed_stats" list. If the user's query relies on data from any column found in that list, you must output an execution graph containing EXACTLY ONE step: `tool_intent: "request_column_stats"`. Do not add setup, cleanup, or initialization steps alongside it.
+2. EXACT VALUE MATCHING (CRITICAL): 
+   - Look at the `sample_values` in `detailed_stats` for low-cardinality columns.
+   - Look at the `query_specific_matches` for high-cardinality columns.
+   - If the column you need is listed in `missing_detailed_stats`, you MUST copy the EXACT string from that list (e.g., use "What is your eye color? 👁️", NEVER guess "eye_color").
+   - Your filter value MUST exactly match the casing, spacing, and abbreviation shown in these fields. Do not guess the syntax.
+3. STRUCTURAL AWARENESS: Look at `regex_skeletons` to understand the format of complex string columns (e.g., emails, IDs). Look at `is_constant` or `is_sequential_id` to avoid filtering or aggregating useless columns.
+4. THE LAZY FETCH BOUNDARY: Inspect the "missing_detailed_stats" list. If the user's query relies on data from any column found in that list, you must output an execution graph containing EXACTLY ONE step: `tool_intent: "request_column_stats"`. Do not add setup, cleanup, or initialization steps alongside it.
 
 CRITICAL FORMAT CONTRACT:
 - Output a single schema instance. 

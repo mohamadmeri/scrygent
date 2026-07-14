@@ -172,11 +172,13 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
                 missing_set = set(state.data_profile.missing_detailed_stats) if state.data_profile else set()
                 invalid_columns = [c for c in requested_columns if c not in missing_set]
                 if invalid_columns:
+                    # Do not dump the entire missing_set list.
+                    # Large lists cause the LLM to overcorrect and request all of them.
+                    # Instead, point it to the data profile for the exact strings.
                     raise ValueError(
-                        f"request_column_stats rejected: column(s) {invalid_columns} "
-                        f"are not in missing_detailed_stats. Only columns absent "
-                        f"from detailed_stats may be requested. Currently missing: "
-                        f"{sorted(missing_set)}."
+                        f"request_column_stats rejected: column(s) {invalid_columns} are not in the "
+                        f"'missing_detailed_stats' list. Please check the data profile and use the "
+                        f"EXACT column names (including emojis and spacing) from that list."
                     )
 
             logger.info("Dispatching %s (Attempt %d/%d)...", step.tool_name, retry_count + 1, MAX_RETRIES + 1)

@@ -19,7 +19,7 @@ class CSVProfile(ScrygentBaseModel):
     row_count: int = Field(description="Total rows. Used to inform query strategy and sampling limits.")
     global_schema: dict[str, str] = Field(description="Column name to dtype mapping for EVERY column in the CSV.")
     detailed_stats: dict[str, dict[str, Any]] = Field(
-        default_factory=dict, description="Full statistical metrics for prioritized, high-value columns."
+        default_factory=dict, description="Full statistical metrics and structural metadata for prioritized columns."
     )
     row_sample: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -34,6 +34,13 @@ class CSVProfile(ScrygentBaseModel):
         default_factory=list,
         description="Columns present in global_schema but absent from detailed_stats. "
         "Planner must resolve these before relying on statistical reasoning.",
+    )
+    query_specific_matches: dict[str, list[Any]] = Field(
+        default_factory=dict,
+        description="Exact string matches extracted from high-cardinality columns based on the user query.",
+    )
+    regex_skeletons: dict[str, str] = Field(
+        default_factory=dict, description="Dominant structural regex patterns for string columns."
     )
 
 

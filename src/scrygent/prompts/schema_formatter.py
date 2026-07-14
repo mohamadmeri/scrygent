@@ -1,5 +1,5 @@
-"""
-Translates the strict Pydantic IR into readable markdown for the Planner LLM.
+"""Translates the strict Pydantic IR into readable markdown for the Planner LLM.
+
 Acts as the single source of truth for the LLM's understanding of tool parameter shapes,
 preventing Pydantic validation mismatches.
 """
@@ -19,6 +19,7 @@ Parameters:
   - filters (optional list): List of filter conditions (see Shared Filter Schema below).
   - group_by (optional list[str]): Columns to GROUP BY.
   - sort (optional object): {"column": "string", "direction": "asc" | "desc"}
+  *(CRITICAL: If you provided 'metrics', sort.column MUST exactly match one of your metric 'alias' names or a 'group_by' column. Do not use raw dataset column names here. If 'metrics' is omitted, sort.column must be a raw dataset column.)*
   - limit (optional int): Max rows to return (must be >= 1).
 
 ## 2. filter_dataset
@@ -98,6 +99,7 @@ If you use filters, each filter object MUST match ONE of these three shapes exac
    - operator (str): "contains", "startswith", "endswith"
    - value (str): A non-empty string.
 """
+
 
 def get_tool_specs() -> str:
     """Returns the Markdown formatted tool specifications for the Planner."""
