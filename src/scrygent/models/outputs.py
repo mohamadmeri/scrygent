@@ -42,12 +42,15 @@ class CSVProfile(ScrygentBaseModel):
     regex_skeletons: dict[str, str] = Field(
         default_factory=dict, description="Dominant structural regex patterns for string columns."
     )
+    column_aliases: dict[str, str] = Field(
+        default_factory=dict, description="Maps clean physical backend columns back to their original UI labels."
+    )
 
 
 class PlotMetadata(ScrygentBaseModel):
-    """Disk-bound visualization reference. Never embeds base64 blobs in state."""
+    """In-memory visualization reference. Stores Plotly JSON to prevent state memory bloat."""
 
-    file_path: str = Field(description="Absolute or relative path to the saved plot image.")
+    plotly_json: str = Field(description="JSON string representation of the interactive Plotly figure.")
     description: str = Field(description="Concise natural-language summary of the visualization.")
 
 
@@ -63,7 +66,8 @@ class AnalysisReport(ScrygentBaseModel):
         "Never sourced from proactive anomaly hallucination.",
     )
     plots: list[PlotMetadata] = Field(
-        default_factory=list, description="File paths and descriptions of visualizations generated during execution."
+        default_factory=list,
+        description="Plotly JSON payloads and descriptions of visualizations generated during execution.",
     )
 
 

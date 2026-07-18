@@ -1464,6 +1464,28 @@ wheels = [
 ]
 
 [[package]]
+name = "plotly"
+version = "6.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "narwhals" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/96/07/795c79dbce40c39bece88e69d049babbd23ffa95b5d117f248db8ea03abb/plotly-6.9.0.tar.gz", hash = "sha256:967ad33e8c704fed051800d11d985eb206a9c795c14206b30a6f463ed9c67d0d", size = 6919903, upload-time = "2026-07-09T14:55:59.982Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/18/d8544811ab076f876c4892b3714f5b0dad335e1dc33aef826df431b8325d/plotly-6.9.0-py3-none-any.whl", hash = "sha256:36bebe2f1bb13884774fe61689c329071446f6ce4a8927fb1f0d6fb24f581236", size = 9909646, upload-time = "2026-07-09T14:55:55.421Z" },
+]
+
+[[package]]
+name = "plotly-stubs"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/81/d5c11003990432c57e5e12b22a7f4388691ec67deeb5c8a13b0e775870bd/plotly_stubs-0.1.3.tar.gz", hash = "sha256:258b40a9099459cf526c587be12c7098376a144fb6c9de4442363a7d30fb118b", size = 169845, upload-time = "2026-04-11T14:56:01.059Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/70/dbd075a1d475b7e253f48a808cc1670f574a808ee1b13f42650bb355eee0/plotly_stubs-0.1.3-py3-none-any.whl", hash = "sha256:dfc69c2777e10236a56fa715d0155727f80086ca5f67d36bc65ba18569b3e761", size = 106211, upload-time = "2026-04-11T14:55:59.748Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1964,6 +1986,8 @@ dependencies = [
     { name = "numexpr" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "plotly" },
+    { name = "plotly-stubs" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -1994,6 +2018,8 @@ requires-dist = [
     { name = "numexpr", specifier = ">=2.14.1" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pandas", specifier = ">=3.0.3" },
+    { name = "plotly", specifier = ">=6.9.0" },
+    { name = "plotly-stubs", specifier = ">=0.1.3" },
     { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
