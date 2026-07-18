@@ -40,7 +40,9 @@ def apply_filters(df: pd.DataFrame, filters: list[dict[str, Any]]) -> pd.DataFra
 
         # Validate column existence
         if col not in working_df.columns:
-            raise ValueError(f"Filter column '{col}' not found. Available: {list(working_df.columns)}")
+            close = difflib.get_close_matches(col, working_df.columns, n=1, cutoff=0.4)
+            hint = f" Did you mean exact column name '{close[0]}'?" if close else ""
+            raise ValueError(f"Filter column '{col}' not found in dataset.{hint}")
 
         # Validate and resolve operator
         try:

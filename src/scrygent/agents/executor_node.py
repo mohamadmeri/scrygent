@@ -103,7 +103,7 @@ def _run_correction_chain(tool_name: ToolName, failed_params: dict[str, Any], er
             "failed_params": json.dumps(failed_params, indent=2),
             "error_message": error_message,
         }),
-        service="Groq (Correction Chain)",
+        service="Executor (Correction Chain)",
     )
 
     return corrected_model.model_dump()

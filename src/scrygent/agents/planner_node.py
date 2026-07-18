@@ -79,7 +79,7 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
                 "experience_context": experience_context,
                 "query": state.user_query,
             }),
-            service="Groq (Parser Pass)",
+            service="Planner (Parser Pass)",
         )
 
         # PASS 2: OPTIMIZER (Apply Execution Heuristics)
@@ -94,7 +94,7 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
                 "draft_plan": draft_plan.model_dump_json(indent=2),
                 "query": state.user_query,
             }),
-            service="Groq (Optimizer Pass)",
+            service="Planner (Optimizer Pass)",
         )
 
         # PASS 3: IR EMISSION (Bind to Strict Pydantic Contracts)
@@ -131,13 +131,14 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
                 # The lambda captures current_prompt via default argument to avoid late-binding issues
                 final_plan = resilient_call(
                     lambda p=current_prompt: (p | final_llm).invoke({  # type: ignore
+                        "data_profile": profile_context,
                         "tool_specs": tool_specs,
                         "optimized_plan": optimized_plan.model_dump_json(indent=2),
                         "query": state.user_query,
                     }),
-                    service="Groq (Emission Pass)",
+                    service="Planner (Emission Pass)",
                 )
-                break  # Success!
+                break
 
             except ValidationError as e:
                 # Extract the exact failing field path to show the LLM

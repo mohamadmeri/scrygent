@@ -3,6 +3,7 @@
 Executes the strict pipeline: Filter -> Group -> Aggregate -> Sort -> Limit.
 """
 
+import difflib
 import logging
 from typing import Any
 
@@ -20,6 +21,10 @@ def _perform_aggregation(
     df: pd.DataFrame, metrics: list[dict[str, Any]], group_by: list[str] | None
 ) -> pd.DataFrame | dict[str, Any]:
     """Executes the aggregation phase of the analytical query."""
+    # If no metrics and no group_by, just return the raw dataframe to be sorted/limited
+    if not metrics and not group_by:
+        return df
+
     if group_by:
         agg_kwargs = {m["alias"]: (m["column"], m["aggregation"]) for m in metrics}
         grouped = df.groupby(group_by, dropna=False)
@@ -94,6 +99,12 @@ def analyze_data(
     Returns:
         A dictionary containing the 'result' key with the computed data.
     """
+    # 1. Safely handle None values BEFORE logging or iterating
+    if metrics is None:
+        metrics = []
+    if filters is None:
+        filters = []
+
     logger.info(
         "Executing analyze_data | metrics: %d | grouped: %s | filtered: %s | sorted: %s | limit: %s",
         len(metrics),
@@ -103,16 +114,16 @@ def analyze_data(
         limit,
     )
 
-    # 1. Validation (Fast-failing with actionable context for the LLM correction loop)
-    seen_aliases = set()
+    # 2. Validation (Fast-failing for the LLM correction loop)
     available_cols = list(df.columns)
-
+    seen_aliases = set()
     for m in metrics:
         if m["aggregation"] not in SUPPORTED_OPERATIONS:
             raise ValueError(f"Unsupported operation '{m['aggregation']}'. Choose from: {SUPPORTED_OPERATIONS}")
         if m["column"] not in df.columns:
-            # Inject available columns so the LLM can self-heal
-            raise ValueError(f"Metric target column '{m['column']}' not found in dataset. Available: {available_cols}")
+            close = difflib.get_close_matches(m["column"], df.columns, n=1, cutoff=0.4)
+            hint = f" Did you mean exact column name '{close[0]}'?" if close else ""
+            raise ValueError(f"Metric target column '{m['column']}' not found in dataset.{hint}")
         if m["alias"] in seen_aliases:
             raise ValueError(f"Duplicate metric alias '{m['alias']}'. Each metric must have a unique alias.")
         seen_aliases.add(m["alias"])
@@ -120,22 +131,20 @@ def analyze_data(
     if group_by:
         for col in group_by:
             if col not in df.columns:
-                # Inject available columns so the LLM can self-heal
-                raise ValueError(f"Group-by column '{col}' not found in dataset. Available: {available_cols}")
+                close = difflib.get_close_matches(col, df.columns, n=1, cutoff=0.4)
+                hint = f" Did you mean exact column name '{close[0]}'?" if close else ""
+                raise ValueError(f"Group-by column '{col}' not found in dataset.{hint}")
 
-    if filters is None:
-        filters = []
-
-    # 2. Filtering phase
+    # 3. Filtering phase
     working_df = apply_filters(df, filters) if filters else df.copy()
 
     if working_df.empty:
         return {"result": None, "warning": "Filtered dataset is empty."}
 
-    # 3. Execution phase (Aggregation)
+    # 4. Execution phase (Aggregation)
     raw_result = _perform_aggregation(working_df, metrics, group_by)
 
-    # 4. Assembly phase (Sort, Limit, Formatting)
+    # 5. Assembly phase (Sort, Limit, Formatting)
     final_result = _format_and_sort_results(raw_result, sort, limit)
 
     return {"result": final_result}
