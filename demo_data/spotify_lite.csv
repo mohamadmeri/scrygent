@@ -1,0 +1,101 @@
+track_name,artist,genre,danceability,energy,valence,popularity_score
+Comedy,Gen Hoshino,acoustic,0.676,0.461,0.715,73
+Ghost - Acoustic,Ben Woodward,acoustic,0.42,0.166,0.267,55
+To Begin Again,Ingrid Michaelson;ZAYN,acoustic,0.438,0.359,0.12,57
+Can't Help Falling In Love,Kina Grannis,acoustic,0.266,0.0596,0.143,71
+Hold On,Chord Overstreet,acoustic,0.618,0.443,0.167,82
+Days I Will Remember,Tyrone Wells,acoustic,0.688,0.481,0.666,58
+Say Something,A Great Big World;Christina Aguilera,acoustic,0.407,0.147,0.0765,74
+I'm Yours,Jason Mraz,acoustic,0.703,0.444,0.712,80
+Lucky,Jason Mraz;Colbie Caillat,acoustic,0.625,0.414,0.669,74
+Hunger,Ross Copperman,acoustic,0.442,0.632,0.196,56
+Give Me Your Forever,Zack Tabudlo,acoustic,0.627,0.363,0.301,74
+I Won't Give Up,Jason Mraz,acoustic,0.483,0.303,0.139,69
+Solo,Dan Berk,acoustic,0.489,0.314,0.607,52
+Bad Liar,Anna Hamilton,acoustic,0.691,0.234,0.209,62
+Hold On - Remix,Chord Overstreet;Deepend,acoustic,0.755,0.78,0.387,56
+Falling in Love at a Coffee Shop,Landon Pigg,acoustic,0.489,0.561,0.238,58
+ily (i love you baby),Andrew Foy;Renee Foy,acoustic,0.706,0.112,0.414,56
+At My Worst,Andrew Foy;Renee Foy,acoustic,0.795,0.0841,0.609,54
+Lucky,Jason Mraz;Colbie Caillat,acoustic,0.625,0.414,0.669,68
+Photograph,Boyce Avenue;Bea Miller,acoustic,0.717,0.32,0.322,67
+I'm Yours,Jason Mraz,acoustic,0.703,0.444,0.712,75
+Demons,Boyce Avenue;Jennel Garcia,acoustic,0.678,0.351,0.569,63
+Say Something,A Great Big World;Christina Aguilera,acoustic,0.407,0.147,0.0765,70
+93 Million Miles,Jason Mraz,acoustic,0.572,0.454,0.515,0
+Unlonely,Jason Mraz,acoustic,0.796,0.667,0.754,0
+Bella Luna,Jason Mraz,acoustic,0.755,0.454,0.33,1
+Winter Wonderland,Jason Mraz,acoustic,0.62,0.309,0.664,0
+If It Kills Me,Jason Mraz,acoustic,0.633,0.429,0.52,0
+Winter Wonderland,Jason Mraz,acoustic,0.62,0.309,0.664,0
+Winter Wonderland,Jason Mraz,acoustic,0.62,0.309,0.664,0
+Winter Wonderland,Jason Mraz,acoustic,0.62,0.309,0.664,0
+Winter Wonderland,Jason Mraz,acoustic,0.62,0.309,0.664,0
+All I Want For Christmas Is A Real Good Tan,Chord Overstreet,acoustic,0.593,0.455,0.564,0
+Party of One,Brandi Carlile;Sam Smith,acoustic,0.296,0.206,0.202,0
+Party of One,Brandi Carlile;Sam Smith,acoustic,0.296,0.206,0.202,0
+Party of One,Brandi Carlile;Sam Smith,acoustic,0.296,0.206,0.202,0
+Lonely This Christmas,KT Tunstall,acoustic,0.409,0.153,0.18,0
+Throwing Good After Bad,Brandi Carlile,acoustic,0.501,0.0952,0.316,0
+This Time Tomorrow,Brandi Carlile,acoustic,0.606,0.326,0.414,0
+Lonely This Christmas,KT Tunstall,acoustic,0.409,0.153,0.18,0
+The Haves,Eddie Vedder,acoustic,0.474,0.519,0.326,0
+When You're Wrong,Brandi Carlile,acoustic,0.568,0.301,0.142,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+"Speak Your Mind (From the Netflix Series ""We The People"")",Brandi Carlile,acoustic,0.476,0.666,0.498,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+You and Me on the Rock,Brandi Carlile;Lucius,acoustic,0.568,0.686,0.725,0
+Trampoline - Acoustic,Highland Peak,acoustic,0.596,0.2,0.308,46
+透明だった世界,Motohiro Hata,acoustic,0.373,0.914,0.56,61
+Pieces,Andrew Belle,acoustic,0.494,0.652,0.298,60
+A Drop in the Ocean,Ron Pope,acoustic,0.447,0.393,0.564,68
+So Far Away - Acoustic,Adam Christopher,acoustic,0.576,0.331,0.407,52
+The Enemy,Andrew Belle,acoustic,0.536,0.89,0.273,62
+Build It Better,Aron Wright,acoustic,0.526,0.333,0.159,51
+Sleepwalking in the Rain,Chord Overstreet,acoustic,0.501,0.381,0.502,0
+Gravity,Sara Bareilles,acoustic,0.27,0.275,0.231,67
+What's Left of You,Chord Overstreet,acoustic,0.731,0.507,0.265,57
+Pano,Zack Tabudlo,acoustic,0.375,0.457,0.415,75
+Sky's Still Blue,Andrew Belle,acoustic,0.43,0.791,0.217,62
+And I Love Her,Kurt Cobain,acoustic,0.616,0.282,0.435,66
+We Can't Stop,Boyce Avenue;Bea Miller,acoustic,0.705,0.347,0.36,64
+Always Be My Baby,Tim Halperin,acoustic,0.582,0.255,0.285,62
+Alone with You,Canyon City,acoustic,0.549,0.274,0.207,58
+Making All Things New,Aaron Espe,acoustic,0.787,0.355,0.48,65
+She Used To Be Mine,Sara Bareilles,acoustic,0.397,0.303,0.172,67
+In My Veins - Feat. Erin Mccarley,Andrew Belle,acoustic,0.548,0.42,0.196,65
+I Don't Wanna Live Forever (Fifty Shades Darker),Tyler Ward,acoustic,0.787,0.403,0.264,44
+A Drop In the Ocean,Ron Pope,acoustic,0.484,0.573,0.346,55
+Superman (It's Not Easy),Five For Fighting,acoustic,0.382,0.416,0.125,70
+When the End Comes,Andrew Belle,acoustic,0.541,0.575,0.428,57
+You're Still The One,Bailey Jehl,acoustic,0.607,0.473,0.54,56
+Light Me Up,Ingrid Michaelson,acoustic,0.417,0.595,0.117,56
+93 Million Miles,Jason Mraz,acoustic,0.572,0.454,0.515,67
+Kaleidoscope,A Great Big World,acoustic,0.709,0.913,0.519,62
+The Long Road,Eddie Vedder;Nusrat Fateh Ali Khan,acoustic,0.537,0.342,0.253,45
+What Would I Do Without You,Drew Holcomb & The Neighbors,acoustic,0.602,0.336,0.335,64
+Have It All,Jason Mraz,acoustic,0.643,0.638,0.6,65
+Heavy Heart,Gabrielle Aplin,acoustic,0.451,0.7,0.37,0
+The House We Never Built,Gabrielle Aplin,acoustic,0.546,0.391,0.202,0
+Society,Eddie Vedder,acoustic,0.561,0.327,0.298,68
+Please Don't Say You Love Me,Gabrielle Aplin,acoustic,0.479,0.541,0.3,0
+Please Don't Say You Love Me,Gabrielle Aplin,acoustic,0.479,0.541,0.3,0
+Guaranteed,Eddie Vedder,acoustic,0.436,0.4,0.351,61
+Brave,Sara Bareilles,acoustic,0.551,0.836,0.758,70
+Lonely This Christmas,KT Tunstall,acoustic,0.409,0.153,0.18,0
+Lonely This Christmas,KT Tunstall,acoustic,0.409,0.153,0.18,0
+Heaven Knows,Five For Fighting,acoustic,0.6,0.845,0.392,62
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+Fairytale Of New York,KT Tunstall,acoustic,0.447,0.555,0.33,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+I Heard The Bells On Christmas Day,The Civil Wars,acoustic,0.492,0.145,0.218,0
+Hold On,KT Tunstall,acoustic,0.661,0.937,0.805,0
+Suddenly I See,KT Tunstall,acoustic,0.603,0.78,0.693,0
