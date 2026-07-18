@@ -8,8 +8,9 @@ import streamlit as st
 
 from scrygent.models.state import AgentState
 
-from .components import render_control_panel, render_pipeline, render_topbar
+from .components import render_control_panel, render_demo_showcase, render_pipeline, render_topbar
 from .orchestration import initialize_session_state, run_graph_with_resilience
+from .theme import TEXT_PRIMARY, TEXT_SECONDARY
 
 
 def run_app() -> None:
@@ -30,9 +31,15 @@ def run_app() -> None:
 
 
 def _render_upload_view() -> None:
-    """Renders the initial file upload screen with pre-flight validation."""
-    st.markdown("### Upload Dataset")
-    st.caption("Scrygent requires a structured CSV to begin deterministic compilation.")
+    """Renders the initial file upload screen with pre-flight validation and demo datasets."""
+    st.markdown(
+        "<h2 style='font-family:Cormorant Garamond,serif;font-size:2.2rem;margin-bottom:0.5rem;'>Compile Your Data</h2>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Scrygent requires a structured CSV to begin deterministic compilation. "
+        "Upload your own or try a curated demo dataset below."
+    )
 
     uploaded_file = st.file_uploader(
         "Upload CSV",
@@ -41,11 +48,9 @@ def _render_upload_view() -> None:
         help="Maximum file size: 200 MB. The file is processed locally and never leaves your environment.",
     )
 
-    # Explicitly state the limit below the uploader
     st.caption("⚠️ **Max upload size:** 200 MB")
 
     if uploaded_file:
-        # Pre-flight validation logic remains exactly the same...
         try:
             uploaded_file.seek(0)
             pd.read_csv(uploaded_file, nrows=5)
@@ -62,27 +67,65 @@ def _render_upload_view() -> None:
         st.toast(f"Loaded {uploaded_file.name}", icon="✅")
         st.rerun()
 
+    # Demo dataset showcase
+    def _on_select_dataset(key: str, meta: dict) -> None:  # type: ignore[type-arg]
+        """Callback when user selects a demo dataset."""
+        path = Path(meta["path"])
+        if path.exists():
+            st.session_state.csv_path = path
+            st.toast(f"Loaded {meta['name']}", icon="✅")
+            st.rerun()
+        else:
+            # Try to find in upload directory
+            upload_dir = Path("/mnt/agents/upload/")
+            candidates = list(upload_dir.glob(f"*{key}*.csv"))
+            if candidates:
+                st.session_state.csv_path = candidates[0]
+                st.toast(f"Loaded {meta['name']}", icon="✅")
+                st.rerun()
+            else:
+                st.error(f"Demo dataset `{meta['name']}` not found. Please ensure `{meta['path']}` exists.")
+
+    def _on_select_question(key: str, meta: dict, question: str) -> None:  # type: ignore[type-arg]
+        """Callback when user clicks a suggested question."""
+        # First ensure dataset is loaded
+        path = Path(meta["path"])
+        if not path.exists():
+            upload_dir = Path("/mnt/agents/upload/")
+            candidates = list(upload_dir.glob(f"*{key}*.csv"))
+            if candidates:
+                path = candidates[0]
+            else:
+                st.error("Demo dataset not found.")
+                return
+
+        st.session_state.csv_path = path
+        st.session_state.query = question
+        st.rerun()
+
+    render_demo_showcase(_on_select_dataset, _on_select_question)
+
 
 def _render_main_interface() -> None:
-    """Renders the IDE-style split-pane interface for chat and telemetry."""
+    """Renders the IDE-style split-pane interface for query and telemetry."""
     left_col, right_col = st.columns([2.5, 1], gap="large")
 
     with left_col:
-        _render_chat_interface()
+        _render_query_interface()
 
     with right_col:
         render_control_panel()
 
 
-def _render_chat_interface() -> None:
-    """Handles the conversational flow, pipeline invocation, and result rendering."""
+def _render_query_interface() -> None:
+    """Handles the query submission, pipeline invocation, and result rendering."""
     pipeline_placeholder = st.empty()
     cooldown_placeholder = st.empty()
 
-    # Render existing chat history
+    # Render existing query history
     if st.session_state.query:
         with st.chat_message("user"):
-            st.markdown(st.session_state.query)
+            st.markdown(f"**Query:** {st.session_state.query}")
 
     if st.session_state.final_state:
         _render_final_result(st.session_state.final_state)
@@ -115,6 +158,13 @@ def _render_chat_interface() -> None:
 
                 st.session_state.final_state = AgentState.model_validate(raw_final_update)
 
+                # Store emitted plan for display in control panel
+                if hasattr(st.session_state.final_state, "plan") and st.session_state.final_state.plan:
+                    try:
+                        st.session_state.emitted_plan = st.session_state.final_state.plan.model_dump(mode="json")
+                    except Exception:
+                        pass
+
                 if st.session_state.final_state.execution_status == "complete":
                     st.toast("Compilation complete", icon="✅")
 
@@ -125,9 +175,9 @@ def _render_chat_interface() -> None:
 
             st.rerun()
 
-    # Chat input at the bottom
+    # Query input at the bottom
     if not st.session_state.query:
-        user_input = st.chat_input("Ask a question about your data...")
+        user_input = st.chat_input("Compile a query about your data...")
         if user_input:
             st.session_state.query = user_input
             st.rerun()
@@ -145,18 +195,44 @@ def _render_final_result(state: AgentState) -> None:
         if state.execution_status == "complete" and state.final_report:
             report = state.final_report
 
-            # Frame the output as a compiled result, not a chat response
-            st.markdown("### Compiled Analysis")
-            st.markdown(getattr(report, "primary_answer", "Analysis Complete"))
+            # Compiled result header
+            st.markdown(
+                "<h3 style='font-family:Cormorant Garamond,serif;font-size:1.6rem;margin-bottom:0.75rem;padding-top:0.25rem;'>"
+                "Compiled Analysis"
+                "</h3>",
+                unsafe_allow_html=True,
+            )
 
+            # Primary answer
+            primary = getattr(report, "primary_answer", "Analysis Complete")
+            st.markdown(
+                f"<div style='font-size:1.15rem;line-height:1.7;color:{TEXT_PRIMARY};margin-bottom:1.5rem;padding:0.25rem 0;'>"
+                f"{primary}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # Secondary observations
             insights = getattr(report, "additional_insights", None)
             if insights:
-                st.markdown("##### Secondary Observations")
+                st.markdown(
+                    "<p class='sg-mono-label' style='margin-bottom:0.5rem;margin-top:1rem;'>Secondary Observations</p>",
+                    unsafe_allow_html=True,
+                )
                 for insight in insights:
-                    st.markdown(f"- {insight}")
+                    st.markdown(
+                        f"<div style='color:{TEXT_SECONDARY};margin-bottom:0.75rem;line-height:1.6;padding-right:0.5rem;padding-left:1.25rem;text-indent:-0.75rem;'>"
+                        f"— {insight}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
+            # Generated visualizations
             plots = getattr(report, "plots", None)
             if plots:
-                st.markdown("##### Generated Visualizations")
+                st.markdown(
+                    "<p class='sg-mono-label' style='margin:1.5rem 0 0.5rem;'>Generated Visualizations</p>",
+                    unsafe_allow_html=True,
+                )
                 for plot in plots:
-                    st.image(str(plot.file_path), caption=plot.description)
+                    st.image(str(plot.file_path), caption=plot.description, use_container_width=True)

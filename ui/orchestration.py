@@ -9,7 +9,7 @@ from streamlit.delta_generator import DeltaGenerator
 from scrygent.graph.builder import build_graph
 from scrygent.resilience import RetryEvent, ServiceExhaustedError, set_retry_handler
 
-from .theme import ACCENT_WARN, NODE_KEY_MAP
+from .theme import NODE_KEY_MAP
 
 
 def initialize_session_state() -> None:
@@ -22,6 +22,8 @@ def initialize_session_state() -> None:
         st.session_state.query = None
     if "final_state" not in st.session_state:
         st.session_state.final_state = None
+    if "emitted_plan" not in st.session_state:
+        st.session_state.emitted_plan = None
     if "pipeline_progress" not in st.session_state:
         st.session_state.pipeline_progress = {"active": None, "completed": set(), "errored": False}
 
@@ -45,6 +47,8 @@ def run_graph_with_resilience(
 
     def on_retry(event: RetryEvent) -> None:
         """Callback invoked by the resilience layer during 429 cooldowns."""
+        from .theme import AMBER
+
         deadline = time.time() + event.wait_seconds
         while True:
             remaining = max(0.0, deadline - time.time())
@@ -54,10 +58,10 @@ def run_graph_with_resilience(
                 st.markdown(
                     f"""
                     <div class="sg-cooldown">
-                        <div style="font-weight: 600; color: {ACCENT_WARN}; margin-bottom: 4px;">
+                        <div style="font-weight: 600; color: {AMBER}; margin-bottom: 4px;">
                             ⏳ System Cooldown — {event.service}
                         </div>
-                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #A0A0A0;">
+                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #78716C;">
                             Rate limited (attempt {event.attempt}/{event.max_attempts}). Retrying in {remaining:0.1f}s.
                         </div>
                     </div>
@@ -94,8 +98,17 @@ def run_graph_with_resilience(
                     if not aborted:
                         st.session_state.pipeline_progress["completed"].add(display_name)
 
-                # Accumulate state manually to avoid a second graph invocation
-                final_state = {**payload, **(final_state or {}), **(partial or {})}
+                new_state = {**payload, **(final_state or {})}
+                for key, value in (partial or {}).items():
+                    if (
+                        key in ["execution_trace", "error_log"]
+                        and isinstance(value, list)
+                        and isinstance(new_state.get(key), list)
+                    ):
+                        new_state[key] = new_state[key] + value  # Append to existing list
+                    else:
+                        new_state[key] = value  # Overwrite/Update scalar fields
+                final_state = new_state
 
         return final_state, None
 
