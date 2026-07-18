@@ -10,11 +10,12 @@ When specifying `parameters` for a tool, you MUST exactly match the schemas belo
 ## 1. analyze_data
 Filters, groups, aggregates, sorts, and limits data.
 Parameters:
-  - metrics (required list):
+  - metrics (optional list):
       - column (str): The exact name of the column to aggregate.
       - aggregation (str): "mean", "sum", "count", "nunique", "min", "max",
         "std", "var", "median". 
-        *(PRO-TIP: To calculate the proportion or percentage of a boolean/binary column, use the "mean" aggregation!)*
+        *(PRO-TIP 1: To calculate proportions of a boolean column, use "mean".)*
+        *(PRO-TIP 2: To find the most frequent/common items, group by the category and use the "count" aggregation, NOT "nunique"!)*
       - alias (str): Name for the output key (must be unique).
   - filters (optional list): List of filter conditions (see Shared Filter Schema below).
   - group_by (optional list[str]): Columns to GROUP BY.

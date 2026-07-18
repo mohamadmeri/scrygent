@@ -53,10 +53,19 @@ def run_reporter_node(state: AgentState) -> dict[str, Any]:
 
         # Serialize step_outputs cleanly to prevent LLM context pollution from Python objects
         outputs_json = json.dumps(state.step_outputs, indent=2)
+        profile_json = json.dumps(state.data_profile.model_dump(mode="json") if state.data_profile else {}, indent=2)
+
+        # Safely extract the bidirectional map
+        alias_json = json.dumps(state.data_profile.column_aliases if state.data_profile else {}, indent=2)
 
         final_report = resilient_call(
-            lambda: chain.invoke({"user_query": state.user_query, "step_outputs": outputs_json}),
-            service="Groq (Reporter)",
+            lambda: chain.invoke({
+                "user_query": state.user_query,
+                "step_outputs": outputs_json,
+                "data_profile": profile_json,
+                "column_aliases": alias_json,
+            }),
+            service="Reporter",
         )
 
         logger.info("Reporter successfully synthesized the final output.")
