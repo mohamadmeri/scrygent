@@ -1,6 +1,22 @@
 """Design tokens, global CSS, and page configuration for the Scrygent UI."""
 
+import base64
+from functools import lru_cache
+from pathlib import Path
+
 import streamlit as st
+
+
+@lru_cache(maxsize=8)
+def _image_data_uri(path: str) -> str | None:
+    """Reads a local image and returns it as a base64 data URI for embedding in raw HTML."""
+    p = Path(path)
+    if not p.exists():
+        return None
+    mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+    encoded = base64.b64encode(p.read_bytes()).decode()
+    return f"data:{mime};base64,{encoded}"
+
 
 # ============================================
 # WARM DARK PALETTE (cohesive with landing page)
@@ -41,7 +57,7 @@ def configure_page() -> None:
     """Sets the global Streamlit page configuration."""
     st.set_page_config(
         page_title="Scrygent · Deterministic Compiler",
-        page_icon="◆",
+        page_icon="assets/favicon.png",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
@@ -49,6 +65,17 @@ def configure_page() -> None:
 
 def inject_css() -> None:
     """Injects the global CSS for the warm dark theme and pipeline animations."""
+    # Apple touch icon for iOS home screen
+    touch_icon = _image_data_uri("assets/apple-touch-icon.png")
+    if touch_icon:
+        st.markdown(f'<link rel="apple-touch-icon" sizes="180x180" href="{touch_icon}">', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown(
         f"""
         <style>
@@ -178,8 +205,8 @@ def inject_css() -> None:
             display: flex;
             align-items: center;
             gap: 8px;
-            text-decoration: none;
-            color: {TEXT_PRIMARY};
+            text-decoration: none !important;
+            color: {TEXT_PRIMARY} !important;
         }}
         .sg-brand-mark {{
             color: {SAGE};
@@ -205,12 +232,12 @@ def inject_css() -> None:
         .sg-about-link {{
             font-family: 'Inter', sans-serif;
             font-size: 0.8rem;
-            color: {TEXT_MUTED};
-            text-decoration: none;
+            color: {TEXT_MUTED} !important;
+            text-decoration: none !important;
             transition: color 0.2s;
         }}
         .sg-about-link:hover {{
-            color: {SAGE};
+            color: {SAGE} !important;
         }}
         .sg-status-group {{
             display: flex;

@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from .theme import AMBER, BG_ELEVATED, NODE_ORDER, SAGE, TEXT_MUTED, TEXT_PRIMARY
+from .theme import AMBER, BG_ELEVATED, NODE_ORDER, SAGE, TEXT_MUTED, TEXT_PRIMARY, _image_data_uri
 
 # ============================================
 # DEMO DATASETS
@@ -119,12 +119,14 @@ def render_topbar() -> None:
     qdrant_dot = "sg-dot-ok" if qdrant_ok else "sg-dot-bad"
     qdrant_text = "ONLINE" if qdrant_ok else "OFFLINE"
 
+    logo_src = _image_data_uri("assets/logo-icon.png") or ""
+
     st.markdown(
         f"""
         <div class="sg-topbar">
             <div style="display:flex;align-items:center;gap:12px;">
                 <a href="https://scrygent.netlify.app/" class="sg-brand" target="_blank">
-                    <span class="sg-brand-mark">◆</span>
+                    <img src="{logo_src}" width="32" height="32" alt="" style="vertical-align:middle;margin-right:8px;border-radius:4px;">
                     Scrygent
                 </a>
                 <span class="sg-divider">|</span>
