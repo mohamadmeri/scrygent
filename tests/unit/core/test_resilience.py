@@ -53,9 +53,7 @@ class TestResilientCall:
 
         Asserts `time.sleep` is never called and the exact return value is propagated.
         """
-        sleep_mock = monkeypatch.setattr(
-            "scrygent.core.resilience.time.sleep", lambda x: pytest.fail("Sleep should not be called")
-        )
+        monkeypatch.setattr("scrygent.core.resilience.time.sleep", lambda x: pytest.fail("Sleep should not be called"))
 
         def success_fn() -> str:
             return "success"
@@ -73,9 +71,7 @@ class TestResilientCall:
         The wrapper must re-raise immediately without retrying to preserve
         the integrity of the Executor's self-healing correction loop.
         """
-        sleep_mock = monkeypatch.setattr(
-            "scrygent.core.resilience.time.sleep", lambda x: pytest.fail("Sleep should not be called")
-        )
+        monkeypatch.setattr("scrygent.core.resilience.time.sleep", lambda x: pytest.fail("Sleep should not be called"))
 
         def bad_fn() -> None:
             raise ValueError("IR validation failed")

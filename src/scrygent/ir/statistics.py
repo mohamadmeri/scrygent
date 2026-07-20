@@ -14,9 +14,7 @@ class CorrelationParams(ScrygentBaseModel):
     """IR for computing correlation between two or more columns."""
 
     columns: list[str] = Field(min_length=2, description="The columns to compute correlation for.")
-    method: CorrelationMethod = Field(
-        default=CorrelationMethod.PEARSON, description="The correlation algorithm to use."
-    )
+    method: CorrelationMethod = Field(default=CorrelationMethod.PEARSON, description="The correlation algorithm to use.")
 
 
 class RegressionParams(ScrygentBaseModel):
@@ -27,7 +25,7 @@ class RegressionParams(ScrygentBaseModel):
     method: RegressionMethod = Field(default=RegressionMethod.LINEAR, description="The regression algorithm to use.")
 
     @model_validator(mode="after")
-    def _target_not_in_features(self) -> "RegressionParams":
+    def _target_not_in_features(self) -> RegressionParams:
         """Ensures the target column is not also listed as a feature."""
         if self.target in self.features:
             raise ValueError(f"target '{self.target}' cannot also appear in features.")

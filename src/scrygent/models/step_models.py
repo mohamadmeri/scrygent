@@ -20,16 +20,14 @@ class Step(ScrygentBaseModel):
     step_id: str = Field(description="Unique identifier for this step.")
     rationale: str = Field(description="Purpose of this execution step. Ensures auditability.")
     tool_name: ToolName = Field(description="Deterministic tool to dispatch.")
-    parameters: dict[str, Any] = Field(
-        default_factory=dict, description="Raw LLM parameters. Canonicalized against the strict IR before dispatch."
-    )
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Raw LLM parameters. Canonicalized against the strict IR before dispatch.")
     required: bool = Field(
         default=True,
         description="If True, failure aborts execution. If False, failure is logged and execution continues.",
     )
 
     @model_validator(mode="after")
-    def _validate_parameters(self) -> "Step":
+    def _validate_parameters(self) -> Step:
         """Validates and canonicalizes raw parameters against the strict IR registry.
 
         Catches Pydantic validation errors early and re-raises concise,
@@ -39,9 +37,7 @@ class Step(ScrygentBaseModel):
         try:
             param_model = TOOL_PARAM_MODELS[self.tool_name]
         except KeyError as exc:
-            raise RuntimeError(
-                f"Internal registry error: Tool '{self.tool_name}' is not mapped in TOOL_PARAM_MODELS."
-            ) from exc
+            raise RuntimeError(f"Internal registry error: Tool '{self.tool_name}' is not mapped in TOOL_PARAM_MODELS.") from exc
 
         try:
             validated = param_model.model_validate(self.parameters)
@@ -50,7 +46,7 @@ class Step(ScrygentBaseModel):
             # Strip the full Pydantic traceback. Return only the top-level
             # error message and the failing field path.
             first_error = exc.errors()[0]
-            loc = " -> ".join(str(l) for l in first_error["loc"]) if first_error["loc"] else "root"
+            loc = " -> ".join(str(part) for part in first_error["loc"]) if first_error["loc"] else "root"
             msg = first_error.get("msg", "Unknown validation failure")
             raise ValueError(f"IR validation failed at '{loc}': {msg}") from None
 
@@ -74,7 +70,7 @@ class Plan(ScrygentBaseModel):
     steps: list[Step] = Field(description="Strictly typed execution sequence.")
 
     @model_validator(mode="after")
-    def _lazy_fetch_must_be_sole_step(self) -> "Plan":
+    def _lazy_fetch_must_be_sole_step(self) -> Plan:
         """Enforces structural constraint: lazy-fetch plans must contain exactly one step.
 
         Prevents the Planner from attempting complex reasoning alongside

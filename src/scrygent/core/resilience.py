@@ -57,9 +57,7 @@ class ServiceExhaustedError(RuntimeError):
         super().__init__(f"{service} did not recover after {attempts} attempt(s): {last_error}")
 
 
-_retry_handler: contextvars.ContextVar[Callable[[RetryEvent], None] | None] = contextvars.ContextVar(
-    "scrygent_retry_handler", default=None
-)
+_retry_handler: contextvars.ContextVar[Callable[[RetryEvent], None] | None] = contextvars.ContextVar("scrygent_retry_handler", default=None)
 
 
 def set_retry_handler(handler: Callable[[RetryEvent], None] | None) -> None:
@@ -90,7 +88,7 @@ def _extract_retry_after(exc: Exception) -> float | None:
             if key in headers:
                 try:
                     return float(headers[key])
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
 
     match = re.search(r"try again in ([\d.]+)s", str(exc), re.IGNORECASE)
@@ -102,7 +100,7 @@ def _extract_retry_after(exc: Exception) -> float | None:
     return None
 
 
-def resilient_call(
+def resilient_call[T](
     fn: Callable[[], T],
     *,
     service: str = "Groq",
@@ -156,9 +154,7 @@ def resilient_call(
                 wait = min(base_delay * (2 ** (attempt - 1)), max_delay)
             wait += random.uniform(0, 0.5)
 
-            logger.warning(
-                "%s rate limited (attempt %d/%d). Cooling down for %.1fs.", service, attempt, max_attempts, wait
-            )
+            logger.warning("%s rate limited (attempt %d/%d). Cooling down for %.1fs.", service, attempt, max_attempts, wait)
 
             # Activate cooldown state for UI
             with _cooldown_lock:
@@ -166,11 +162,7 @@ def resilient_call(
 
             try:
                 if handler:
-                    handler(
-                        RetryEvent(
-                            service=service, attempt=attempt, max_attempts=max_attempts, wait_seconds=wait, error=exc
-                        )
-                    )
+                    handler(RetryEvent(service=service, attempt=attempt, max_attempts=max_attempts, wait_seconds=wait, error=exc))
                 else:
                     time.sleep(wait)
             finally:

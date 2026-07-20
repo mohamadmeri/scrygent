@@ -143,7 +143,7 @@ def run_planner_node(state: AgentState) -> dict[str, Any]:
             except ValidationError as e:
                 # Extract the exact failing field path to show the LLM
                 first_error = e.errors()[0]
-                loc = " -> ".join(str(l) for l in first_error["loc"]) if first_error["loc"] else "root"
+                loc = " -> ".join(str(part) for part in first_error["loc"]) if first_error["loc"] else "root"
                 msg = first_error.get("msg", "Unknown validation failure")
                 last_error_msg = f"Field '{loc}': {msg}"
 

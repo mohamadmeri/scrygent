@@ -42,7 +42,7 @@ class AnalyzeDataParams(ScrygentBaseModel):
     limit: int | None = Field(default=None, ge=1, description="Optional row limit applied after sorting.")
 
     @model_validator(mode="after")
-    def _aliases_unique_and_sort_resolvable(self) -> "AnalyzeDataParams":
+    def _aliases_unique_and_sort_resolvable(self) -> AnalyzeDataParams:
         """Validates that metric aliases are unique and the sort target is resolvable."""
         aliases = []
         if self.metrics is not None:
@@ -50,8 +50,7 @@ class AnalyzeDataParams(ScrygentBaseModel):
             if len(aliases) != len(set(aliases)):
                 dupes = sorted({a for a in aliases if aliases.count(a) > 1})
                 raise ValueError(
-                    f"Duplicate metric alias(es): {dupes}. Each metric's alias must be "
-                    "unique to prevent silent collisions in the output record."
+                    f"Duplicate metric alias(es): {dupes}. Each metric's alias must be unique to prevent silent collisions in the output record."
                 )
 
         if self.sort is not None:

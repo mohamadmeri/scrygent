@@ -26,7 +26,7 @@ class PlotParams(ScrygentBaseModel):
     title: str | None = Field(default=None, description="Optional title for the plot.")
 
     @model_validator(mode="after")
-    def _arity_matches_plot_type(self) -> "PlotParams":
+    def _arity_matches_plot_type(self) -> PlotParams:
         """Validates that the number of columns matches the plot type requirements."""
         n = len(self.columns)
 

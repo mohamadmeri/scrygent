@@ -78,14 +78,14 @@ def correlation(
 
 def _fit_linear(df: pd.DataFrame, target: str, features: list[str]) -> dict[str, Any]:
     """Fits a multivariate linear regression using ordinary least squares."""
-    X = df[features].to_numpy(dtype=float)
+    x = df[features].to_numpy(dtype=float)
     y = df[target].to_numpy(dtype=float)
-    X_design = np.column_stack([np.ones(len(X)), X])
+    x_design = np.column_stack([np.ones(len(x)), x])
 
-    coeffs, _, _, _ = np.linalg.lstsq(X_design, y, rcond=None)
+    coeffs, _, _, _ = np.linalg.lstsq(x_design, y, rcond=None)
     intercept, feature_coeffs = coeffs[0], coeffs[1:]
 
-    y_pred = X_design @ coeffs
+    y_pred = x_design @ coeffs
     ss_res = np.sum((y - y_pred) ** 2)
     ss_tot = np.sum((y - np.mean(y)) ** 2)
     r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else None

@@ -70,10 +70,7 @@ def _query_score(col: str, series: pd.Series, query: str) -> float:
 
     # 3. Numeric heuristic boost
     if pd.api.types.is_numeric_dtype(series):
-        if any(
-            x in q
-            for x in ["greater", "less", "above", "below", "rate", "average", "mean", "max", "min", "total", "sum"]
-        ):
+        if any(x in q for x in ["greater", "less", "above", "below", "rate", "average", "mean", "max", "min", "total", "sum"]):
             score += 1.5
 
     return score
@@ -128,16 +125,14 @@ def _extract_regex_skeleton(series: pd.Series) -> str | None:
     if most_common:
         pattern, count = most_common[0]
         if count / len(sample) >= 0.5:
-            MAX_SKELETON_LENGTH = 100
-            if len(pattern) > MAX_SKELETON_LENGTH:
-                return f"{pattern[:MAX_SKELETON_LENGTH]}...[truncated]"
+            max_skeleton_length = 100
+            if len(pattern) > max_skeleton_length:
+                return f"{pattern[:max_skeleton_length]}...[truncated]"
             return pattern
     return None
 
 
-def _extract_query_specific_matches(
-    df: pd.DataFrame, priority_cols: list[str], user_query: str
-) -> dict[str, list[Any]]:
+def _extract_query_specific_matches(df: pd.DataFrame, priority_cols: list[str], user_query: str) -> dict[str, list[Any]]:
     """Scans priority categorical columns for exact/case-insensitive matches against the user's query tokens.
 
     Extracts exact ground-truth strings for high-cardinality columns without bloating the prompt.
