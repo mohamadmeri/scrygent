@@ -1,0 +1,47 @@
+name: Scrygent CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run Ruff (Lint & Format)
+        run: uv run ruff check .
+
+      - name: Run MyPy (Type Checking)
+        run: uv run mypy src/scrygent
+
+      - name: Run Pytest with Coverage
+        run: |
+          uv run pytest tests/ -m "not stress" \
+            --cov=src/scrygent \
+            --cov-report=xml \
+            --cov-report=term-missing
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: true

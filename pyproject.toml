@@ -42,21 +42,6 @@ dev = [
     "pandas-stubs>=3.0.3.260530",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
-addopts = [
-    "--cov=src/scrygent",
-    "--cov-report=term-missing",
-    "--import-mode=importlib",
-    "--strict-markers",
-    "--strict-config",
-]
-filterwarnings = [
-    "error",
-    "ignore::DeprecationWarning",
-]
-
 [tool.coverage.run]
 source = ["src/scrygent"]
 branch = true
@@ -80,3 +65,42 @@ disallow_untyped_defs = false
 
 [tool.uv.pip]
 index-url = "https://pypi.org/simple"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "-m", "not stress",
+]
+
+markers = [
+    "stress: mark test as property-based fuzzing or extreme data shapes (deselected by default)",
+    "hermetic: marks tests that must never touch the network or live LLMs",
+    "boundary: marks tests targeting the ScrygentBaseModel JSON sanitization layer",
+    "integration: marks tests exercising multiple Scrygent nodes end-to-end",
+    "graph: marks tests exercising LangGraph routing and conditional edges",
+]
+
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:langchain_core.*",
+    "ignore::DeprecationWarning:langchain_groq.*",
+    "ignore::DeprecationWarning:langchain_openai.*",
+    "ignore::pydantic.PydanticDeprecatedSince20",
+    "ignore::pydantic.PydanticDeprecatedSince211",
+]
+
+tmp_path_retention_policy = "failed"
+log_cli = false
+log_cli_level = "WARNING"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
