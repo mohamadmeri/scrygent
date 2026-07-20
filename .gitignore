@@ -19,7 +19,7 @@ AGENTS.local.md
 .coverage.*
 htmlcov/
 .pytest_cache/
-*.py,cover
+*.cover
 
 # Development
 .ruff_cache/
@@ -32,10 +32,13 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Data artifacts
 data/
 
+# Hypothesis fuzzing database
 .hypothesis
 
+# Local debug artifacts
 planner_debug.json
 
 # VS Code: Commit team settings, ignore user-specific files
@@ -53,4 +56,5 @@ scripts/*.png
 # Streamlit secrets
 .streamlit/secrets.toml
 
+# Evaluation artifacts
 eval_reports/
