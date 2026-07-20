@@ -115,7 +115,6 @@ def analyze_data(
     )
 
     # 2. Validation (Fast-failing for the LLM correction loop)
-    available_cols = list(df.columns)
     seen_aliases = set()
     for m in metrics:
         if m["aggregation"] not in SUPPORTED_OPERATIONS:

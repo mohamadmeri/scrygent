@@ -47,7 +47,7 @@ DEMO_DATASETS = {
 @st.cache_data(ttl=5, show_spinner=False)
 def check_llm_health() -> str:
     """Returns 'ok', 'cooldown', or 'offline'."""
-    from scrygent.resilience import is_system_cooling_down
+    from scrygent.core.resilience import is_system_cooling_down
 
     if is_system_cooling_down():
         return "cooldown"

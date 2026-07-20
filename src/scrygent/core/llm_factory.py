@@ -17,7 +17,7 @@ from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from .contracts.llm import LLMProvider
+from ..contracts.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 

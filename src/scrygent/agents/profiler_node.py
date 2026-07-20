@@ -9,8 +9,9 @@ sound execution plan without guessing data distributions.
 import logging
 from typing import Any
 
+from ..core.ingestion import preflight_clean_dataset
 from ..models.state import AgentState
-from ..tools.io import load_csv, preflight_clean_dataset
+from ..tools.io import load_csv
 from ..tools.profiler import profile_dataframe
 
 logger = logging.getLogger(__name__)
