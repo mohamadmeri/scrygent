@@ -258,9 +258,7 @@ def render_control_panel() -> None:
 
     # Dataset Telemetry
     with st.container(border=True):
-        st.markdown(
-            '<p class="sg-mono-label" style="margin-bottom:0.75rem;">Active Dataset</p>', unsafe_allow_html=True
-        )
+        st.markdown('<p class="sg-mono-label" style="margin-bottom:0.75rem;">Active Dataset</p>', unsafe_allow_html=True)
         if st.session_state.csv_path:
             st.code(st.session_state.csv_path.name, language=None)
 
@@ -272,15 +270,11 @@ def render_control_panel() -> None:
 
     # System Health
     with st.container(border=True):
-        st.markdown(
-            '<p class="sg-mono-label" style="margin-bottom:0.75rem;">System Telemetry</p>', unsafe_allow_html=True
-        )
+        st.markdown('<p class="sg-mono-label" style="margin-bottom:0.75rem;">System Telemetry</p>', unsafe_allow_html=True)
         llm_ok = check_llm_health()
         qdrant_ok = check_qdrant_health()
 
-        status_llm = (
-            "🟢 Connected" if llm_ok == "ok" else ("🟡 Cooldown" if llm_ok == "cooldown" else "🔴 Disconnected")
-        )
+        status_llm = "🟢 Connected" if llm_ok == "ok" else ("🟡 Cooldown" if llm_ok == "cooldown" else "🔴 Disconnected")
         status_qdrant = "🟢 Connected" if qdrant_ok else "🔴 Disconnected"
 
         st.markdown(f"**LLM Backend:** {status_llm}")
@@ -336,9 +330,7 @@ def render_control_panel() -> None:
 def _render_execution_trace(state: Any) -> None:
     """Renders the strict IR execution trace using native Streamlit status components."""
     with st.container(border=True):
-        st.markdown(
-            '<p class="sg-mono-label" style="margin-bottom:0.75rem;">Compiled IR Trace</p>', unsafe_allow_html=True
-        )
+        st.markdown('<p class="sg-mono-label" style="margin-bottom:0.75rem;">Compiled IR Trace</p>', unsafe_allow_html=True)
 
         if state.execution_status == "aborted":
             st.error("Execution Aborted")

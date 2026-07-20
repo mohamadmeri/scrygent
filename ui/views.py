@@ -36,10 +36,7 @@ def _render_upload_view() -> None:
         "<h2 style='font-family:Cormorant Garamond,serif;font-size:2.2rem;margin-bottom:0.5rem;'>Compile Your Data</h2>",
         unsafe_allow_html=True,
     )
-    st.caption(
-        "Scrygent requires a structured CSV to begin deterministic compilation. "
-        "Upload your own or try a curated demo dataset below."
-    )
+    st.caption("Scrygent requires a structured CSV to begin deterministic compilation. Upload your own or try a curated demo dataset below.")
 
     uploaded_file = st.file_uploader(
         "Upload CSV",
@@ -144,9 +141,7 @@ def _render_query_interface() -> None:
                 )
                 payload = initial_state.model_dump(mode="json")
 
-                raw_final_update, exhausted_error = run_graph_with_resilience(
-                    payload, pipeline_placeholder, cooldown_placeholder
-                )
+                raw_final_update, exhausted_error = run_graph_with_resilience(payload, pipeline_placeholder, cooldown_placeholder)
 
                 if exhausted_error is not None:
                     st.error(f"**Service temporarily unavailable.** {exhausted_error.service} is still rate limited.")
@@ -197,18 +192,14 @@ def _render_final_result(state: AgentState) -> None:
 
             # Compiled result header
             st.markdown(
-                "<h3 style='font-family:Cormorant Garamond,serif;font-size:1.6rem;margin-bottom:0.75rem;padding-top:0.25rem;'>"
-                "Compiled Analysis"
-                "</h3>",
+                "<h3 style='font-family:Cormorant Garamond,serif;font-size:1.6rem;margin-bottom:0.75rem;padding-top:0.25rem;'>Compiled Analysis</h3>",
                 unsafe_allow_html=True,
             )
 
             # Primary answer
             primary = getattr(report, "primary_answer", "Analysis Complete")
             st.markdown(
-                f"<div style='font-size:1.15rem;line-height:1.7;color:{TEXT_PRIMARY};margin-bottom:1.5rem;padding:0.25rem 0;'>"
-                f"{primary}"
-                f"</div>",
+                f"<div style='font-size:1.15rem;line-height:1.7;color:{TEXT_PRIMARY};margin-bottom:1.5rem;padding:0.25rem 0;'>{primary}</div>",
                 unsafe_allow_html=True,
             )
 
@@ -227,12 +218,22 @@ def _render_final_result(state: AgentState) -> None:
                         unsafe_allow_html=True,
                     )
 
-            # Generated visualizations
-            plots = getattr(report, "plots", None)
-            if plots:
-                st.markdown(
-                    "<p class='sg-mono-label' style='margin:1.5rem 0 0.5rem;'>Generated Visualizations</p>",
-                    unsafe_allow_html=True,
-                )
-                for plot in plots:
-                    st.image(str(plot.file_path), caption=plot.description, use_container_width=True)
+        # Generated visualizations
+        plots = getattr(report, "plots", None)
+        if plots:
+            import json
+
+            st.markdown(
+                "<p class='sg-mono-label' style='margin:1rem 0 0.5rem;'>Generated Visualizations</p>",
+                unsafe_allow_html=True,
+            )
+            for i, plot in enumerate(plots):
+                # Parse the JSON string back into a dictionary for Streamlit
+                fig_dict = json.loads(plot.plotly_json)
+
+                # Render interactive chart
+                st.plotly_chart(fig_dict, use_container_width=True, key=f"plot_{i}_{hash(plot.plotly_json)}")
+
+                # Caption below the chart
+                if plot.description:
+                    st.caption(plot.description)

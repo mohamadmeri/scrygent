@@ -27,8 +27,7 @@ class CSVProfile(ScrygentBaseModel):
     )
     truncated: bool = Field(
         default=False,
-        description="True if detailed_stats covers fewer columns than global_schema. "
-        "Signals that request_column_stats may be required.",
+        description="True if detailed_stats covers fewer columns than global_schema. Signals that request_column_stats may be required.",
     )
     missing_detailed_stats: list[str] = Field(
         default_factory=list,
@@ -39,12 +38,8 @@ class CSVProfile(ScrygentBaseModel):
         default_factory=dict,
         description="Exact string matches extracted from high-cardinality columns based on the user query.",
     )
-    regex_skeletons: dict[str, str] = Field(
-        default_factory=dict, description="Dominant structural regex patterns for string columns."
-    )
-    column_aliases: dict[str, str] = Field(
-        default_factory=dict, description="Maps clean physical backend columns back to their original UI labels."
-    )
+    regex_skeletons: dict[str, str] = Field(default_factory=dict, description="Dominant structural regex patterns for string columns.")
+    column_aliases: dict[str, str] = Field(default_factory=dict, description="Maps clean physical backend columns back to their original UI labels.")
 
 
 class PlotMetadata(ScrygentBaseModel):
@@ -57,13 +52,10 @@ class PlotMetadata(ScrygentBaseModel):
 class AnalysisReport(ScrygentBaseModel):
     """Final synthesized output for standard query execution."""
 
-    primary_answer: str = Field(
-        description="Direct answer to the original query, sourced exclusively from verified tool outputs."
-    )
+    primary_answer: str = Field(description="Direct answer to the original query, sourced exclusively from verified tool outputs.")
     additional_insights: list[str] | None = Field(
         default=None,
-        description="Optional secondary observations surfaced only from tool outputs. "
-        "Never sourced from proactive anomaly hallucination.",
+        description="Optional secondary observations surfaced only from tool outputs. Never sourced from proactive anomaly hallucination.",
     )
     plots: list[PlotMetadata] = Field(
         default_factory=list,
@@ -74,6 +66,4 @@ class AnalysisReport(ScrygentBaseModel):
 class DirectAnswer(ScrygentBaseModel):
     """Benchmark-mode output. Contains only the extracted answer value."""
 
-    answer: str = Field(
-        description="The exact extracted answer value. Matches benchmark evaluation harness formatting."
-    )
+    answer: str = Field(description="The exact extracted answer value. Matches benchmark evaluation harness formatting.")
