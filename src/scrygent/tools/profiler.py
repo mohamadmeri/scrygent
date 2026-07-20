@@ -47,19 +47,33 @@ def _is_identifier(name: str, series: pd.Series) -> bool:
 
 
 def _query_score(col: str, series: pd.Series, query: str) -> float:
-    """Calculates a relevance score for a column based on the user query."""
+    """Calculates a relevance score for a column based on the user query.
+
+    Uses robust token overlap to ensure natural language column names
+    (e.g., "What is your eye color? 👁️") are correctly prioritized.
+    """
     q = query.lower()
     c = col.lower()
     score = 0.0
 
+    # 1. Exact column name match (word boundary)
     pattern = rf"\b{re.escape(c)}\b"
     if re.search(pattern, q):
         score += 3.0
-    elif any(tok in q for tok in c.split("_") if len(tok) > 2):
-        score += 1.0
 
+    # 2. Token overlap match
+    col_tokens = set(re.findall(r"\b\w+\b", c))
+    query_tokens = set(re.findall(r"\b\w+\b", q))
+    overlap = col_tokens & query_tokens
+    if overlap:
+        score += len(overlap) * 1.5  # Boost for each matching word
+
+    # 3. Numeric heuristic boost
     if pd.api.types.is_numeric_dtype(series):
-        if any(x in q for x in ["greater", "less", "above", "below", "rate", "$"]):
+        if any(
+            x in q
+            for x in ["greater", "less", "above", "below", "rate", "average", "mean", "max", "min", "total", "sum"]
+        ):
             score += 1.5
 
     return score
@@ -88,13 +102,18 @@ def _select_columns(df: pd.DataFrame, query: str, max_cols: int) -> list[str]:
 
         scored.append((col, score))
 
+    # Sort by score descending, then by original column order for stability
     scored.sort(key=lambda x: (-x[1], list(df.columns).index(x[0])))
 
     return [c for c, _ in scored[:max_cols]]
 
 
 def _extract_regex_skeleton(series: pd.Series) -> str | None:
-    """Extracts the dominant structural pattern of a string column."""
+    """Extracts the dominant structural pattern of a string column.
+
+    Truncates massive patterns to prevent prompt window bloat, as the LLM
+    only needs the prefix to understand the structural format.
+    """
     sample = series.dropna().head(100).astype(str)
     if sample.empty:
         return None
@@ -109,6 +128,9 @@ def _extract_regex_skeleton(series: pd.Series) -> str | None:
     if most_common:
         pattern, count = most_common[0]
         if count / len(sample) >= 0.5:
+            MAX_SKELETON_LENGTH = 100
+            if len(pattern) > MAX_SKELETON_LENGTH:
+                return f"{pattern[:MAX_SKELETON_LENGTH]}...[truncated]"
             return pattern
     return None
 
@@ -151,6 +173,10 @@ def _extract_query_specific_matches(
         "highest",
         "lowest",
         "top",
+        "does",
+        "also",
+        "have",
+        "any",
     }
     target_tokens = raw_tokens - stop_words
 
@@ -159,7 +185,8 @@ def _extract_query_specific_matches(
 
     matches: dict[str, list[Any]] = {}
     for col in priority_cols:
-        if pd.api.types.is_numeric_dtype(df[col]):
+        # Only extract matches for categorical/string columns, skip pure numeric/boolean
+        if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
             continue
 
         col_matches = []
@@ -177,19 +204,10 @@ def _extract_query_specific_matches(
 
 
 def profile_dataframe(df: pd.DataFrame, user_query: str) -> dict[str, Any]:
-    """Generates a comprehensive, two-level structural profile of a DataFrame.
-
-    Args:
-        df: The source DataFrame to profile.
-        user_query: The natural language query used to prioritize columns.
-
-    Returns:
-        A dictionary containing the row count, global schema, detailed stats,
-        truncation flag, row sample, and missing detailed stats list.
-    """
+    """Generates a comprehensive, two-level structural profile of a DataFrame."""
     logger.info("Profiling df: rows=%d cols=%d", len(df), len(df.columns))
 
-    if df.empty:
+    if len(df) == 0 and len(df.columns) == 0:
         return {
             "row_count": 0,
             "global_schema": {},
@@ -207,7 +225,7 @@ def profile_dataframe(df: pd.DataFrame, user_query: str) -> dict[str, Any]:
 
     detailed_stats = compute_detailed_stats(df, priority_cols)
 
-    # Insight 2: Extract Regex Skeletons for all priority string columns
+    # Insight: Extract Regex Skeletons for all priority string columns
     regex_skeletons: dict[str, str] = {}
     for col in priority_cols:
         if not pd.api.types.is_numeric_dtype(df[col]):
