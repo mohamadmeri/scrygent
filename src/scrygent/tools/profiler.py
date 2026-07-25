@@ -12,12 +12,13 @@ from typing import Any
 
 import pandas as pd
 
+from ..core.config import settings
 from ._shared.column_stats import _to_python_scalar, compute_detailed_stats
 from .io import get_column_sample
 
 logger = logging.getLogger(__name__)
 
-MAX_DETAILED_COLUMNS = 15
+MAX_DETAILED_COLUMNS = settings.max_detailed_columns
 MIN_ROWS_FOR_STATISTICAL_ID_SIGNAL = 20
 
 _ID_PATTERNS = ("id", "_id", "uuid", "guid", "hash", "key")
@@ -133,32 +134,22 @@ def _extract_regex_skeleton(series: pd.Series) -> str | None:
 
 
 def _extract_query_specific_matches(df: pd.DataFrame, priority_cols: list[str], user_query: str) -> dict[str, list[Any]]:
-    """Scans priority categorical columns for exact/case-insensitive matches against the user's query tokens.
+    """Scans categorical columns for word-level matches against the user's query tokens.
 
-    Extracts exact ground-truth strings for high-cardinality columns without bloating the prompt.
+    Includes strict length and boundary constraints to prevent context window token bloat.
     """
-    raw_tokens = set(re.findall(r"\b\w+\b", user_query.lower()))
+    # 1. Tokenize query: only alphabetic words, 3 characters or longer. Ignores numbers like "4".
+    raw_tokens = set(re.findall(r"\b[a-zA-Z]{3,}\b", user_query.lower()))
+
+    # 2. Expanded analytical stop words
     stop_words = {
         "the",
-        "a",
-        "an",
-        "is",
-        "are",
+        "and",
         "show",
-        "me",
         "find",
         "filter",
-        "by",
         "where",
         "what",
-        "in",
-        "for",
-        "and",
-        "or",
-        "to",
-        "of",
-        "with",
-        "from",
         "that",
         "this",
         "which",
@@ -168,10 +159,17 @@ def _extract_query_specific_matches(df: pd.DataFrame, priority_cols: list[str], 
         "highest",
         "lowest",
         "top",
-        "does",
-        "also",
-        "have",
-        "any",
+        "most",
+        "least",
+        "how",
+        "many",
+        "count",
+        "average",
+        "mean",
+        "sum",
+        "total",
+        "with",
+        "from",
     }
     target_tokens = raw_tokens - stop_words
 
@@ -180,14 +178,29 @@ def _extract_query_specific_matches(df: pd.DataFrame, priority_cols: list[str], 
 
     matches: dict[str, list[Any]] = {}
     for col in priority_cols:
-        # Only extract matches for categorical/string columns, skip pure numeric/boolean
-        if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
+        if pd.api.types.is_numeric_dtype(df[col]):
             continue
 
         col_matches = []
         for val in df[col].dropna().unique():
-            val_str = str(val).lower()
-            if any(tok in val_str or val_str in tok for tok in target_tokens):
+            val_str = str(val).strip()
+
+            # Prevent Paragraph Leaks.
+            # If a category value is longer than 60 chars, it's unstructured text, not a filterable category.
+            if len(val_str) > 60:
+                continue
+
+            val_lower = val_str.lower()
+
+            # Word Boundary Matching.
+            # Prevents partial matches (e.g. token "view" matching dataset value "interview")
+            is_match = False
+            for tok in target_tokens:
+                if re.search(rf"\b{re.escape(tok)}\b", val_lower):
+                    is_match = True
+                    break
+
+            if is_match:
                 col_matches.append(_to_python_scalar(val))
                 if len(col_matches) >= 5:
                     break

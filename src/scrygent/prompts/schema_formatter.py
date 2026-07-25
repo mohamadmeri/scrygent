@@ -1,107 +1,71 @@
-"""Translates the strict Pydantic IR into readable markdown for the Planner LLM.
+"""Translates the strict Pydantic IR into compact schema definitions for the Planner LLM.
 
-Acts as the single source of truth for the LLM's understanding of tool parameter shapes,
-preventing Pydantic validation mismatches.
+Acts as the single source of truth for tool parameter shapes, preventing validation mismatches.
 """
 
 TOOL_SPECIFICATIONS = """
-When specifying `parameters` for a tool, you MUST exactly match the schemas below. Do not invent fields.
+TOOL SCHEMAS (Strictly enforce these parameter shapes. Do not invent fields):
 
-## 1. analyze_data
-Filters, groups, aggregates, sorts, and limits data.
-Parameters:
-  - metrics (optional list):
-      - column (str): The exact name of the column to aggregate.
-      - aggregation (str): "mean", "sum", "count", "nunique", "min", "max",
-        "std", "var", "median". 
-        *(PRO-TIP 1: To calculate proportions of a boolean column, use "mean".)*
-        *(PRO-TIP 2: To find the most frequent/common items, group by the category and use the "count" aggregation, NOT "nunique"!)*
-      - alias (str): Name for the output key (must be unique).
-  - filters (optional list): List of filter conditions (see Shared Filter Schema below).
-  - group_by (optional list[str]): Columns to GROUP BY.
-  - sort (optional object): {"column": "string", "direction": "asc" | "desc"}
-  *(CRITICAL: If you provided 'metrics', sort.column MUST exactly match one of your metric 'alias' names or a 'group_by' column. Do not use raw dataset column names here. If 'metrics' is omitted, sort.column must be a raw dataset column.)*
-  - limit (optional int): Max rows to return (must be >= 1).
+1. analyze_data
+   - metrics: list[{column: str, aggregation: "mean"|"sum"|"count"|"nunique"|"min"|"max"|"std"|"var"|"median", alias: str}] (optional)
+     [PRO-TIP 1: To calculate proportions of a boolean column, use "mean".]
+     [PRO-TIP 2: To find the most frequent/common items, group by the category and use the "count" aggregation, NOT "nunique"!]
+   - filters: list[FilterObject] (optional, see Shared Filter Schema below)
+   - group_by: list[str] (optional)
+   - sort: {column: str, direction: "asc"|"desc"} (optional). CRITICAL: If 'metrics' exists, sort.column MUST be a metric 'alias' or 'group_by' column. If no 'metrics', it must be a raw dataset column.
+   - limit: int (optional, >= 1)
 
-## 2. filter_dataset
-Filters the dataset to a subset and updates the current working file.
-Parameters:
-- filters (required list): List of filter conditions (see Shared Filter Schema below).
+2. filter_dataset
+   - filters: list[FilterObject] (required)
 
-## 3. normalize_column
-Transforms a column's values.
-Parameters:
-- column (required str): Exact column name.
-- method (required str): "min_max", "z_score", "log", "strip", "lowercase", "uppercase", "title_case".
+3. normalize_column
+   - column: str (required)
+   - method: "min_max"|"z_score"|"log"|"strip"|"lowercase"|"uppercase"|"title_case" (required)
 
-## 4. reset_dataset
-Reverts the working dataset back to the original uploaded file.
-Parameters: {} (Must be an exactly empty dictionary)
+4. reset_dataset
+   - {} (MUST be an exactly empty dictionary)
 
-## 5. correlation
-Calculates statistical correlation between columns.
-Parameters:
-- columns (required list[str]): At least 2 columns.
-- method (optional str): "pearson" (default), "spearman", "kendall".
+5. correlation
+   - columns: list[str] (required, min 2)
+   - method: "pearson"|"spearman"|"kendall" (optional, default "pearson")
 
-## 6. regression
-Fits a linear regression model.
-Parameters:
-- target (required str): The dependent variable.
-- features (required list[str]): Independent variables (at least 1).
-- method (optional str): "linear" (default).
+6. regression
+   - target: str (required)
+   - features: list[str] (required, min 1)
+   - method: "linear" (optional, default "linear")
 
-## 7. detect_outliers
-Finds anomalies in a single column.
-Parameters:
-- column (required str): Exact column name.
-- method (optional str): "iqr" (default), "z_score".
+7. detect_outliers
+   - column: str (required)
+   - method: "iqr"|"z_score" (optional, default "iqr")
 
-## 8. request_column_stats
-Batch requests detailed statistics for columns missing from the profile.
-Parameters:
-- columns (required list[str]): Columns to fetch.
+8. request_column_stats
+   - columns: list[str] (required)
 
-## 9. generate_plot
-Saves a visualization to disk. Parameters:
-  - plot_type (required str): "bar", "line", "scatter", "histogram", "box", "heatmap".
-  - columns (required list[str]): Target columns. For "bar", "line", and "scatter", you MUST provide EXACTLY TWO columns in this exact order: [x_axis_categorical, y_axis_numeric].
-  - title (optional str): Plot title.
+9. generate_plot
+   - plot_type: "bar"|"line"|"scatter"|"histogram"|"box"|"heatmap" (required)
+   - columns: list[str] (required). For bar/line/scatter: EXACTLY TWO columns in order [x_axis_categorical, y_axis_numeric]. CRITICAL: generate_plot reads from the raw dataset, NEVER use metric aliases here.
+   - title: str (optional)
 
-## 10. derive_column
-Executes row-wise math to create a new column.
-Parameters:
-- new_column (required str): Name of the new column.
-- expression (required str): Math formula using existing column names (e.g., "Revenue - Cost").
+10. derive_column
+    - new_column: str (required)
+    - expression: str (required, e.g., "Revenue - Cost")
 
-## 11. evaluate_metrics
-Executes math on scalar values (e.g., calculating a ratio from previous step outputs).
-Parameters:
-- expression (required str): Math formula (e.g., "profit / revenue").
-- values (required dict): Map of variable names to numbers (e.g., {"profit": 500, "revenue": 1000}).
+11. evaluate_metrics
+    - expression: str (required, e.g., "profit / revenue")
+    - values: dict[str, float] (required, e.g., {"profit": 500})
 
----
+SHARED FILTER SCHEMA (Each object in a 'filters' list MUST match ONE of these exactly):
+- Scalar: {column: str, operator: "=="|"!="|">"|"<"|">="|"<=", value: str|int|float|bool}
+- List: {column: str, operator: "in"|"not in", value: list[str|int|float]}
+- String: {column: str, operator: "contains"|"startswith"|"endswith", value: str}
 
-### SHARED FILTER SCHEMA (used in analyze_data and filter_dataset)
-If you use filters, each filter object MUST match ONE of these three shapes exactly:
-
-1. Scalar Filter (comparing against one value)
-   - column (str)
-   - operator (str): "==", "!=", ">", "<", ">=", "<="
-   - value (str | int | float | bool)
-
-2. List Membership Filter (checking if value is in a list)
-   - column (str)
-   - operator (str): "in", "not in"
-   - value (list): A non-empty list of values.
-
-3. String Operation Filter
-   - column (str)
-   - operator (str): "contains", "startswith", "endswith"
-   - value (str): A non-empty string.
+CRITICAL RULES:
+1. MULTI-VALUE: Use list values for "in"/"not in" (e.g., {"column": "country", "operator": "in", "value": ["US", "China"]}). Never nest dicts in 'value'.
+2. SCALAR ONLY: The 'value' field must be a primitive. NEVER nest a tool call or dict inside 'value'.
+3. EXACT MATCH: All column names MUST exactly match keys in `global_schema`. Do not pluralize or guess.
 """
 
 
 def get_tool_specs() -> str:
-    """Returns the Markdown formatted tool specifications for the Planner."""
+    """Returns the compact, strict tool specifications for the Planner."""
     return TOOL_SPECIFICATIONS

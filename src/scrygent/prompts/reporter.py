@@ -51,7 +51,14 @@ USER QUERY: {user_query}
 VERIFIED TOOL OUTPUTS: {step_outputs}
 
 RULES:
-1. Output ONLY the scalar value, string, boolean, or comma-separated list requested.
+1. Output ONLY the scalar value, string, boolean, or list requested.
 2. DO NOT include units, currency symbols, narrative text, or explanations.
-3. If the answer is a float, output exactly what the tool provided.
+3. YES/NO QUESTIONS (CRITICAL): If the user's query is a Yes/No question (e.g., "Are there any...", "Is the...", "Does the..."), you MUST output exactly "True" (for Yes) or "False" (for No). NEVER output the words "Yes" or "No".
+4. If the answer is a list of items, you MUST format it exactly like a Python list with square brackets and single quotes, e.g., "['A', 'B']" or "[1.0, 2.0]". Do not just use commas.
+
+OUTPUT FORMAT (CRITICAL):
+You are operating in strict JSON mode. You MUST output a valid JSON object matching this exact shape:
+{{
+  "answer": "Your exact formatted answer here"
+}}
 """

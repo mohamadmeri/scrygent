@@ -46,13 +46,22 @@ def load_csv(file_path: str | Path) -> pd.DataFrame:
 def get_column_sample(df: pd.DataFrame, n: int = 3) -> list[dict[Hashable, Any]]:
     """Extracts a strictly bounded row sample for LLM formatting context.
 
-    Replaces NaN values with None to ensure strict JSON compatibility.
+    Replaces NaN values with None and truncates long strings to prevent
+    prompt window bloat from unstructured text columns (e.g., transcripts).
     """
     if df.empty:
         return []
 
     head = df.head(n)
     safe_df = head.astype(object).where(pd.notna(head), None)
+
+    # Truncate long strings in the sample to prevent token explosion
+    max_sample_string_length = 200
+    for col in safe_df.columns:
+        safe_df[col] = safe_df[col].apply(
+            lambda x: f"{str(x)[:max_sample_string_length]}...[truncated]" if isinstance(x, str) and len(x) > max_sample_string_length else x
+        )
+
     return safe_df.to_dict(orient="records")
 
 
