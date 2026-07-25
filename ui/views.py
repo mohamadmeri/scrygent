@@ -232,7 +232,7 @@ def _render_final_result(state: AgentState) -> None:
                 fig_dict = json.loads(plot.plotly_json)
 
                 # Render interactive chart
-                st.plotly_chart(fig_dict, use_container_width=True, key=f"plot_{i}_{hash(plot.plotly_json)}")
+                st.plotly_chart(fig_dict, width="stretch", key=f"plot_{i}_{hash(plot.plotly_json)}")
 
                 # Caption below the chart
                 if plot.description:
