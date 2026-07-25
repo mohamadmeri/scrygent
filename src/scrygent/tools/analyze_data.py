@@ -11,15 +11,14 @@ import pandas as pd
 
 from ..contracts import Aggregation
 from ._shared.filtering import apply_filters
+from .io import write_temp_csv
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_OPERATIONS = set(Aggregation)
 
 
-def _perform_aggregation(
-    df: pd.DataFrame, metrics: list[dict[str, Any]], group_by: list[str] | None
-) -> pd.DataFrame | dict[str, Any]:
+def _perform_aggregation(df: pd.DataFrame, metrics: list[dict[str, Any]], group_by: list[str] | None) -> pd.DataFrame | dict[str, Any]:
     """Executes the aggregation phase of the analytical query."""
     # If no metrics and no group_by, just return the raw dataframe to be sorted/limited
     if not metrics and not group_by:
@@ -43,9 +42,7 @@ def _perform_aggregation(
     return results
 
 
-def _format_and_sort_results(
-    raw_result: pd.DataFrame | dict[str, Any], sort: dict[str, str] | None, limit: int | None
-) -> Any:
+def _format_and_sort_results(raw_result: pd.DataFrame | dict[str, Any], sort: dict[str, str] | None, limit: int | None) -> Any:
     """Applies sorting, limiting, and final formatting to the aggregated results."""
     if isinstance(raw_result, dict):
         return raw_result
@@ -64,10 +61,7 @@ def _format_and_sort_results(
             # Provide available targets for the correction chain
             clean_targets = sorted(list(valid_targets), key=lambda x: (x is not None, str(x)))
 
-            raise ValueError(
-                f"Sort column '{sort_col}' not found. Must be an aggregation alias or group dimension. "
-                f"Available: {clean_targets}"
-            )
+            raise ValueError(f"Sort column '{sort_col}' not found. Must be an aggregation alias or group dimension. Available: {clean_targets}")
 
     if limit is not None:
         agg_df = agg_df.head(limit)
@@ -146,4 +140,11 @@ def analyze_data(
     # 5. Assembly phase (Sort, Limit, Formatting)
     final_result = _format_and_sort_results(raw_result, sort, limit)
 
-    return {"result": final_result}
+    response: dict[str, Any] = {"result": final_result}
+
+    if group_by or metrics:
+        out_df = pd.DataFrame(final_result)
+        new_csv_path = write_temp_csv(out_df, prefix="scrygent_analyzed_")
+        response["current_csv_path"] = str(new_csv_path)
+
+    return response

@@ -40,6 +40,10 @@ observations derived STRICTLY from the tool outputs AND data profile. Look for:
 
 5. TONE: Professional, objective, and analytical. Like a senior data analyst writing an executive summary.
 
+6.PLOTS (CRITICAL): If the execution trace contains a `generate_plot` tool output with `plotly_json` and 
+`description`, you MUST include those exact details in the `plots` array of your response.
+Do not attempt to describe the plot from raw data; rely entirely on the generated JSON.
+
 OUTPUT FORMAT:
 Return a valid JSON object matching the AnalysisReport schema.
 """

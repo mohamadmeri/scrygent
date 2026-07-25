@@ -43,7 +43,7 @@ TOOL SCHEMAS (Strictly enforce these parameter shapes. Do not invent fields):
 
 9. generate_plot
    - plot_type: "bar"|"line"|"scatter"|"histogram"|"box"|"heatmap" (required)
-   - columns: list[str] (required). For bar/line/scatter: EXACTLY TWO columns in order [x_axis_categorical, y_axis_numeric]. CRITICAL: generate_plot reads from the raw dataset, NEVER use metric aliases here.
+   - columns: list[str] (required). For bar/line/scatter: EXACTLY TWO columns in order [x_axis_categorical, y_axis_numeric].
    - title: str (optional)
 
 10. derive_column
