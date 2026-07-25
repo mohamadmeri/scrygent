@@ -14,11 +14,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from ..contracts import PlotType
+from ..core.config import settings
 from .io import load_csv
 
 logger = logging.getLogger(__name__)
 MAX_CATEGORIES = 25
-MAX_PLOT_POINTS = 5000  # Protects the JSON state boundary
+MAX_PLOT_POINTS = settings.max_plot_points  # Protects the JSON state boundary
 
 
 def _require_columns(df: pd.DataFrame, columns: list[str]) -> None:

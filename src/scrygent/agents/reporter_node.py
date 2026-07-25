@@ -12,6 +12,7 @@ from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
+from ..core.config import settings
 from ..core.llm_factory import get_structured_llm
 from ..core.memory.store import commit_experience
 from ..core.resilience import ServiceExhaustedError, resilient_call
@@ -45,18 +46,19 @@ def run_reporter_node(state: AgentState) -> dict[str, Any]:
         target_schema = DirectAnswer if state.eval_mode else AnalysisReport
         system_prompt = EVAL_SYSTEM_PROMPT if state.eval_mode else REPORTER_SYSTEM_PROMPT
 
-        structured_llm = get_structured_llm(pydantic_schema=target_schema)
-
+        structured_llm = get_structured_llm(
+            pydantic_schema=target_schema, model_name=settings.reporter_reasoning_model, method=settings.get_reporter_method
+        )
         prompt = ChatPromptTemplate.from_messages([("system", system_prompt)])
 
         chain = prompt | structured_llm
 
         # Serialize step_outputs cleanly to prevent LLM context pollution from Python objects
-        outputs_json = json.dumps(state.step_outputs, indent=2)
-        profile_json = json.dumps(state.data_profile.model_dump(mode="json") if state.data_profile else {}, indent=2)
+        outputs_json = json.dumps(state.step_outputs, separators=(",", ":"))
+        profile_json = json.dumps(state.data_profile.model_dump(mode="json", exclude_none=True) if state.data_profile else {}, separators=(",", ":"))
 
         # Safely extract the bidirectional map
-        alias_json = json.dumps(state.data_profile.column_aliases if state.data_profile else {}, indent=2)
+        alias_json = json.dumps(state.data_profile.column_aliases if state.data_profile else {}, separators=(",", ":"))
 
         final_report = resilient_call(
             lambda: chain.invoke({
@@ -80,10 +82,7 @@ def run_reporter_node(state: AgentState) -> dict[str, Any]:
         logger.error("Reporter Node aborted: %s exhausted its retry budget.", e.service)
         return {
             "error_log": state.error_log
-            + [
-                f"{e.service} is temporarily unavailable (rate limited after "
-                f"{e.attempts} attempts) while synthesizing the final report."
-            ],
+            + [f"{e.service} is temporarily unavailable (rate limited after {e.attempts} attempts) while synthesizing the final report."],
             "execution_status": "aborted",
         }
     except Exception as e:

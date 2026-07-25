@@ -68,9 +68,7 @@ class TestRunProfilerNodeFailures:
         assert result["execution_status"] == "aborted"
         assert len(result["error_log"]) == 1
         # Pandas raises "[Errno 2] No such file or directory: '...'"
-        assert result["error_log"][0].startswith(
-            f"Profiler initialization failed: [Errno 2] No such file or directory: '{ghost_path}'"
-        )
+        assert result["error_log"][0].startswith(f"Profiler initialization failed: [Errno 2] No such file or directory: '{ghost_path}'")
 
     def test_aborts_with_exact_error_when_preflight_fails(self, valid_agent_state: AgentState) -> None:
         """Mock `preflight_clean_dataset` to raise a simulated `ValueError`.

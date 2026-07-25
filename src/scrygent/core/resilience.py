@@ -1,9 +1,9 @@
 """Network resilience and rate-limit management for outbound LLM calls.
 
 This module provides a deterministic exponential-backoff wrapper for
-HTTP 429 (Too Many Requests) errors. It isolates network instability
-from the core execution graph, ensuring that transient rate limits
-do not trigger false-positive schema validation failures.
+HTTP 429 (Too Many Requests) errors and transient connection drops.
+It isolates network instability from the core execution graph, ensuring
+that transient API limits do not trigger false-positive schema validation failures.
 
 The module utilizes contextvars to inject UI-level cooldown callbacks
 without importing Streamlit, maintaining strict architectural isolation.
@@ -70,12 +70,23 @@ def get_retry_handler() -> Callable[[RetryEvent], None] | None:
     return _retry_handler.get()
 
 
-def _is_rate_limit_error(exc: Exception) -> bool:
-    """Determines if an exception represents an HTTP 429 rate limit violation."""
+def _is_transient_error(exc: Exception) -> bool:
+    """Determines if an exception is a transient network error (429, Timeout, Connection Drop)."""
     status_code = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
-    if status_code == 429:
+    if status_code in {429, 502, 503, 504}:
         return True
-    return exc.__class__.__name__ in {"RateLimitError", "TooManyRequestsError"}
+
+    exc_name = type(exc).__name__
+    transient_exceptions = {
+        "RateLimitError",
+        "TooManyRequestsError",
+        "APIConnectionError",
+        "APITimeoutError",
+        "RemoteProtocolError",
+        "ConnectError",
+        "ReadTimeout",
+    }
+    return exc_name in transient_exceptions
 
 
 def _extract_retry_after(exc: Exception) -> float | None:
@@ -109,9 +120,9 @@ def resilient_call[T](
     max_delay: float = 30.0,
     on_retry: Callable[[RetryEvent], None] | None = None,
 ) -> T:
-    """Executes a callable with exponential-backoff retry on HTTP 429 rate limits.
+    """Executes a callable with exponential-backoff retry on transient network errors.
 
-    Non-429 exceptions are re-raised immediately to preserve the integrity
+    Non-transient exceptions are re-raised immediately to preserve the integrity
     of the Self-Healing Correction Loop. If a retry handler is registered,
     it assumes control of the wait duration to enable live UI countdowns;
     otherwise, the wrapper performs a synchronous sleep.
@@ -128,8 +139,8 @@ def resilient_call[T](
         The result of the successful callable execution.
 
     Raises:
-        ServiceExhaustedError: If all attempts fail with rate limit errors.
-        Exception: Any non-rate-limit exception raised by the callable.
+        ServiceExhaustedError: If all attempts fail with network errors.
+        Exception: Any non-transient exception raised by the callable.
     """
     global _is_cooling_down
 
@@ -142,7 +153,7 @@ def resilient_call[T](
         try:
             return fn()
         except Exception as exc:
-            if not _is_rate_limit_error(exc):
+            if not _is_transient_error(exc):
                 raise
 
             last_error = exc
@@ -154,7 +165,12 @@ def resilient_call[T](
                 wait = min(base_delay * (2 ** (attempt - 1)), max_delay)
             wait += random.uniform(0, 0.5)
 
-            logger.warning("%s rate limited (attempt %d/%d). Cooling down for %.1fs.", service, attempt, max_attempts, wait)
+            # Log distinctly whether it's a rate limit or a connection drop
+            is_429 = getattr(exc, "status_code", None) == 429 or "rate limit" in str(exc).lower()
+            if is_429:
+                logger.warning("%s rate limited (attempt %d/%d). Cooling down for %.1fs.", service, attempt, max_attempts, wait)
+            else:
+                logger.warning("%s connection dropped/timeout (attempt %d/%d). Retrying in %.1fs.", service, attempt, max_attempts, wait)
 
             # Activate cooldown state for UI
             with _cooldown_lock:

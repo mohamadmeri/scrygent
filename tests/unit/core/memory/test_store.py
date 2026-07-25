@@ -11,7 +11,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from scrygent.core.memory import store
 
@@ -23,15 +23,19 @@ class DummyPlan(BaseModel):
 
 
 @pytest.fixture
-def mock_hf_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Inject dummy Hugging Face and Qdrant credentials."""
-    monkeypatch.setenv("HF_API_TOKEN", "test-hf-token")
-    monkeypatch.setenv("QDRANT_URL", "http://mock-qdrant")
-    monkeypatch.setenv("QDRANT_API_KEY", "test-qdrant-key")
+def mock_memory_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inject dummy memory and embedding credentials via settings."""
+    mock_settings = MagicMock()
+    mock_settings.memory_enabled = True
+    mock_settings.qdrant_url = "http://mock-qdrant"
+    mock_settings.qdrant_api_key = SecretStr("test-qdrant-key")
+    mock_settings.hf_api_token = SecretStr("test-hf-token")
+    mock_settings.hf_embedding_api_url = "http://mock-hf-url"
+    monkeypatch.setattr("scrygent.core.memory.store.settings", mock_settings)
 
 
 @pytest.fixture
-def mock_hf_flat_list_response(monkeypatch: pytest.MonkeyPatch, mock_hf_env: None) -> None:
+def mock_hf_flat_list_response(monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
     """Mock HF API to return a flat list of floats."""
     mock_resp = MagicMock()
     mock_resp.raise_for_status.return_value = None
@@ -40,7 +44,7 @@ def mock_hf_flat_list_response(monkeypatch: pytest.MonkeyPatch, mock_hf_env: Non
 
 
 @pytest.fixture
-def mock_hf_nested_list_response(monkeypatch: pytest.MonkeyPatch, mock_hf_env: None) -> None:
+def mock_hf_nested_list_response(monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
     """Mock HF API to return a nested list of floats (common HF format)."""
     mock_resp = MagicMock()
     mock_resp.raise_for_status.return_value = None
@@ -51,24 +55,20 @@ def mock_hf_nested_list_response(monkeypatch: pytest.MonkeyPatch, mock_hf_env: N
 class TestMemoryClientInitialization:
     """Tests validating strict credential enforcement and safe fallbacks."""
 
-    def test_get_client_returns_none_on_missing_qdrant_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Delete the `QDRANT_URL` environment variable.
-
-        The factory must return None and log a warning, disabling memory gracefully.
-        """
-        monkeypatch.delenv("QDRANT_URL", raising=False)
-        monkeypatch.setenv("QDRANT_API_KEY", "test")
-
-        assert store._get_client() is None
-
-    def test_get_client_returns_none_on_missing_qdrant_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Delete the `QDRANT_API_KEY` environment variable.
+    def test_get_client_returns_none_on_missing_qdrant_url(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
+        """Delete the `qdrant_url` from settings.
 
         The factory must return None and disable memory gracefully.
         """
-        monkeypatch.setenv("QDRANT_URL", "http://test")
-        monkeypatch.delenv("QDRANT_API_KEY", raising=False)
+        monkeypatch.setattr("scrygent.core.memory.store.settings.qdrant_url", None)
+        assert store._get_client() is None
 
+    def test_get_client_returns_none_on_missing_qdrant_api_key(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
+        """Delete the `qdrant_api_key` from settings.
+
+        The factory must return None and disable memory gracefully.
+        """
+        monkeypatch.setattr("scrygent.core.memory.store.settings.qdrant_api_key", None)
         assert store._get_client() is None
 
 
@@ -91,7 +91,7 @@ class TestHuggingFaceEmbedding:
         vec = store._embed_text_huggingface("test query")
         assert vec == [0.4, 0.5, 0.6]
 
-    def test_returns_none_on_empty_hf_response(self, monkeypatch: pytest.MonkeyPatch, mock_hf_env: None) -> None:
+    def test_returns_none_on_empty_hf_response(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Inject an empty list response from the HF API.
 
         The wrapper must catch the unexpected shape and return None.
@@ -103,15 +103,15 @@ class TestHuggingFaceEmbedding:
 
         assert store._embed_text_huggingface("test query") is None
 
-    def test_returns_none_on_missing_hf_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Delete the `HF_API_TOKEN` environment variable.
+    def test_returns_none_on_missing_hf_token(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
+        """Delete the `hf_api_token` from settings.
 
         The wrapper must return None immediately without attempting the API call.
         """
-        monkeypatch.delenv("HF_API_TOKEN", raising=False)
+        monkeypatch.setattr("scrygent.core.memory.store.settings.hf_api_token", None)
         assert store._embed_text_huggingface("test query") is None
 
-    def test_returns_none_on_api_network_failure(self, monkeypatch: pytest.MonkeyPatch, mock_hf_env: None) -> None:
+    def test_returns_none_on_api_network_failure(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Inject a `requests.exceptions.RequestException` during the API call.
 
         The wrapper must catch the exception, log it, and return None to prevent
@@ -129,7 +129,7 @@ class TestHuggingFaceEmbedding:
 class TestRetrieveExperience:
     """Tests validating the Qdrant query construction and relevance filtering."""
 
-    def test_returns_no_experience_when_client_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_no_experience_when_client_is_none(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Force `_get_client` to return None (missing creds).
 
         The function must return the exact fallback string without attempting
@@ -141,9 +141,7 @@ class TestRetrieveExperience:
         result = store.retrieve_experience("query")
         assert result == "No past experience available."
 
-    def test_returns_no_experience_when_embedding_fails(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_env: None
-    ) -> None:
+    def test_returns_no_experience_when_embedding_fails(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Force `_embed_text_huggingface` to return None.
 
         The function must return the exact fallback string without querying Qdrant.
@@ -154,9 +152,7 @@ class TestRetrieveExperience:
         result = store.retrieve_experience("query")
         assert result == "No past experience available."
 
-    def test_returns_formatted_string_on_relevant_hit(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None
-    ) -> None:
+    def test_returns_formatted_string_on_relevant_hit(self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None) -> None:
         """Inject a mock Qdrant client returning a point with score > 0.75.
 
         Asserts the function extracts the payload and formats the exact string
@@ -172,9 +168,7 @@ class TestRetrieveExperience:
         assert "PAST QUERY: past query" in result
         assert "SUCCESSFUL PLAN:\n{...}" in result
 
-    def test_returns_no_relevant_experience_on_low_score(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None
-    ) -> None:
+    def test_returns_no_relevant_experience_on_low_score(self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None) -> None:
         """Inject a mock Qdrant client returning a point with score < 0.75.
 
         The function must filter it out and return the exact fallback string.
@@ -187,9 +181,7 @@ class TestRetrieveExperience:
         result = store.retrieve_experience("test query")
         assert result == "No highly relevant experience found."
 
-    def test_returns_fallback_on_qdrant_exception(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None
-    ) -> None:
+    def test_returns_fallback_on_qdrant_exception(self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None) -> None:
         """Inject a mock Qdrant client that raises an Exception during query.
 
         The function must catch the exception and return the exact fallback string.
@@ -205,7 +197,7 @@ class TestRetrieveExperience:
 class TestCommitExperience:
     """Tests validating the Qdrant upsert payload and error handling."""
 
-    def test_silently_returns_when_client_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_silently_returns_when_client_is_none(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Force `_get_client` to return None.
 
         The function must return None without attempting to embed or upsert.
@@ -215,7 +207,7 @@ class TestCommitExperience:
 
         assert store.commit_experience("query", DummyPlan()) is None
 
-    def test_silently_returns_when_embedding_fails(self, monkeypatch: pytest.MonkeyPatch, mock_hf_env: None) -> None:
+    def test_silently_returns_when_embedding_fails(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
         """Force `_embed_text_huggingface` to return None.
 
         The function must return None without attempting to upsert.
@@ -225,9 +217,7 @@ class TestCommitExperience:
 
         assert store.commit_experience("query", DummyPlan()) is None
 
-    def test_generates_correct_point_struct_and_upserts(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None
-    ) -> None:
+    def test_generates_correct_point_struct_and_upserts(self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None) -> None:
         """Inject a valid mock client and embedding.
 
         Asserts the function computes the exact MD5 vector ID, dumps the plan
@@ -253,9 +243,7 @@ class TestCommitExperience:
         assert points[0].payload["query"] == query
         assert points[0].payload["plan_json"] == plan.model_dump_json(indent=2)
 
-    def test_silently_catches_qdrant_upsert_exception(
-        self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None
-    ) -> None:
+    def test_silently_catches_qdrant_upsert_exception(self, monkeypatch: pytest.MonkeyPatch, mock_hf_flat_list_response: None) -> None:
         """Inject a mock Qdrant client that raises an Exception during upsert.
 
         The function must catch the exception and return None to prevent

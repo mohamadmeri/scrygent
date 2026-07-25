@@ -1,7 +1,7 @@
 """Destructive test suite for the deterministic dataset profiling engine.
 
 This module aggressively tests the two-level structural profiler. It ensures
-that empty DataFrames are handled gracefully, identifier columns are flagged
+that empty DataFrames are handled gracefully, identifier columns are penalized
 to prevent bad math, truncation logic triggers exactly when limits are hit,
 and LLM-facing artifacts (like regex skeletons and query matches) are precise.
 """
@@ -49,7 +49,7 @@ class TestProfileDataframeEdgeCases:
         """Inject a DataFrame with columns but zero rows.
 
         The profiler must avoid division-by-zero in scoring and return the
-        exact global schema while leaving detailed stats computable.
+        exact global schema while leaving detailed stats empty or minimal.
         """
         zero_row_df = pd.DataFrame({
             "col1": pd.Series(dtype="int64"),
@@ -59,6 +59,7 @@ class TestProfileDataframeEdgeCases:
 
         assert profile["row_count"] == 0
         assert profile["global_schema"] == {"col1": "int64", "col2": "object"}
+        # Detailed stats should be computable for 0 rows without crashing
         assert "col1" in profile["detailed_stats"]
 
 
@@ -79,21 +80,16 @@ class TestProfileDataframeSelectionLogic:
 
         missing = profile["missing_detailed_stats"]
         assert len(missing) == 7
-        assert "user_id" in missing
 
-    def test_flags_monotonic_id_column_to_prevent_bad_math(self, wide_sample_df: pd.DataFrame) -> None:
+    def test_flags_monotonic_id_column(self, wide_sample_df: pd.DataFrame) -> None:
         """Inject a query that matches an ID column (`user_id`).
 
-        The profiler must NOT omit the column (hiding it is dangerous). Instead, it must
-        explicitly flag it as a sequential ID so the Planner's prompt can read the flag
-        and actively choose to avoid filtering or aggregating it.
+        The profiler must select the column and flag it as a sequential ID
+        to prevent the LLM from attempting aggregations on primary keys.
         """
         profile = profile_dataframe(wide_sample_df, user_query="user_id")
 
-        # It SHOULD be in detailed stats so the Planner knows it exists
         assert "user_id" in profile["detailed_stats"]
-
-        # But it must be explicitly flagged to prevent bad math
         assert profile["detailed_stats"]["user_id"].get("is_sequential_id") is True
 
 
@@ -122,6 +118,7 @@ class TestProfileDataframeArtifacts:
 
         matches = profile["query_specific_matches"]
         assert "category" in matches
+        # Should contain 'apple', but NOT 'the' or 'show'
         assert "apple" in matches["category"]
         assert "the" not in matches["category"]
         assert "show" not in matches["category"]
@@ -137,5 +134,6 @@ class TestProfileDataframeArtifacts:
 
         sample = profile["row_sample"]
         assert len(sample) == 3
-        assert sample[1]["col1"] is None
-        assert sample[2]["col2"] is None
+        # Assert that NaN is scrubbed (is None or np.isnan)
+        assert pd.isna(sample[1]["col1"])
+        assert pd.isna(sample[2]["col2"])

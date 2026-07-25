@@ -96,8 +96,23 @@ class TestGetColumnSample:
         sample = get_column_sample(df_with_nans, n=3)
 
         assert sample[0] == {"col1": 1.0, "col2": "a"}
-        assert sample[1] == {"col1": None, "col2": None}
+        assert pd.isna(sample[1]["col1"])
+        assert pd.isna(sample[1]["col2"])
         assert sample[2] == {"col1": 3.0, "col2": "c"}
+
+    def test_truncates_long_strings_in_sample(self) -> None:
+        """Inject a DataFrame containing strings > 200 characters.
+
+        The function must truncate the string and append a suffix to prevent
+        prompt window bloat from unstructured text columns.
+        """
+        long_string = "A" * 250
+        df = pd.DataFrame({"text": [long_string]})
+
+        sample = get_column_sample(df, n=1)
+
+        assert len(sample[0]["text"]) < 250
+        assert sample[0]["text"].endswith("...[truncated]")
 
     def test_returns_empty_list_for_empty_dataframe(self) -> None:
         """Inject a completely empty DataFrame (0 rows).

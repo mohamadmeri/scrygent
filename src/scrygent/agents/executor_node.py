@@ -100,7 +100,7 @@ def _run_correction_chain(tool_name: ToolName, failed_params: dict[str, Any], er
         lambda: chain.invoke({
             "tool_specs": isolated_markdown_spec,
             "tool_name": tool_string_identifier,
-            "failed_params": json.dumps(failed_params, indent=2),
+            "failed_params": json.dumps(failed_params, separators=(",", ":")),
             "error_message": error_message,
         }),
         service="Executor (Correction Chain)",
@@ -196,9 +196,7 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
                 fetched_stats = result.get("detailed_stats", {})
 
                 new_profile.detailed_stats.update(fetched_stats)
-                new_profile.missing_detailed_stats = [
-                    c for c in new_profile.missing_detailed_stats if c not in fetched_stats
-                ]
+                new_profile.missing_detailed_stats = [c for c in new_profile.missing_detailed_stats if c not in fetched_stats]
 
                 record = StepRecord(
                     step_id=step.step_id,
@@ -280,9 +278,7 @@ def run_executor_node(state: AgentState) -> dict[str, Any]:
                     logger.error("Self-healing correction engine itself broke: %s", str(repair_exc))
                     break
 
-    logger.error(
-        "Step %s (%s) permanently failed execution after %d attempts.", step.step_id, step.tool_name, MAX_RETRIES + 1
-    )
+    logger.error("Step %s (%s) permanently failed execution after %d attempts.", step.step_id, step.tool_name, MAX_RETRIES + 1)
     record = StepRecord(
         step_id=step.step_id,
         tool_name=step.tool_name,

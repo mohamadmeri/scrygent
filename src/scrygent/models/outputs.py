@@ -66,4 +66,4 @@ class AnalysisReport(ScrygentBaseModel):
 class DirectAnswer(ScrygentBaseModel):
     """Benchmark-mode output. Contains only the extracted answer value."""
 
-    answer: str = Field(description="The exact extracted answer value. Matches benchmark evaluation harness formatting.")
+    answer: Any = Field(description="The extracted answer value as a scalar, string, boolean, or list, matching benchmark expectations exactly.")
