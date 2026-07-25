@@ -133,13 +133,13 @@ def render_topbar() -> None:
                 <span class="sg-subtitle">Deterministic Data Compiler</span>
             </div>
             <div class="sg-topbar-right">
-                <a href="https://scrygent.netlify.app/" class="sg-about-link" target="_blank">← About</a>
+                <a href="https://scrygent.netlify.app/" class="sg-about-link" target="_blank"> About </a>
                 <div class="sg-status-group">
                     <div class="sg-status-pill">
                         <span class="sg-dot {llm_dot}"></span> LLM: {llm_text}
                     </div>
                     <div class="sg-status-pill">
-                        <span class="sg-dot {qdrant_dot}"></span> QDRANT: {qdrant_text}
+                        <span class="sg-dot {qdrant_dot}"></span> VECTOR MEMORY: {qdrant_text}
                     </div>
                 </div>
             </div>

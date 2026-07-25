@@ -11,5 +11,10 @@
             "source.fixAll.ruff": "explicit"
         }
     },
-    "ruff.configuration": "ruff.toml"
+    "ruff.configuration": "ruff.toml",
+    "python.testing.pytestArgs": [
+      "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }
