@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     openrouter_reasoning_model: str = Field(default="nvidia/nemotron-3-super-120b-a12b:free")
     openrouter_formatting_model: str = Field(default="google/gemma-4-26b-a4b-it:free")
 
-    reporter_reasoning_model: str = Field(default="nvidia/nemotron-3-super-120b-a12b:free")
+    # ADD VALIDATION ALIAS HERE FOR CONSISTENCY
+    reporter_reasoning_model: str = Field(default="nvidia/nemotron-3-super-120b-a12b:free", validation_alias="SCRYGENT_REPORTER_MODEL")
 
     # LLM Output Methods
     # Options: "json_mode", "function_calling", or "" (empty string for None)
