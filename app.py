@@ -5,17 +5,14 @@ import os
 
 import streamlit as st
 
+# INJECT SECRETS FIRST
+if hasattr(st, "secrets"):
+    for key, value in st.secrets.items():
+        if key not in os.environ:
+            os.environ[key] = str(value)
+
+# IMPORT UI LATER
 from ui import run_app
-
-# STREAMLIT CLOUD SECRET BRIDGE
-
-# The core engine (src/scrygent/) remains strictly UI-agnostic and reads
-# credentials via os.getenv(). Streamlit Cloud injects credentials via
-# st.secrets. This bridge maps the Streamlit secrets to environment variables
-# at runtime, preserving the architectural boundary.
-for key, value in st.secrets.items():
-    if key not in os.environ:
-        os.environ[key] = str(value)
 
 # Configure root logger so INFO messages from the core engine appear in the terminal.
 logging.basicConfig(

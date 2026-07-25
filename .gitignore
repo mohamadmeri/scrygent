@@ -56,5 +56,6 @@ scripts/*.png
 # Streamlit secrets
 .streamlit/secrets.toml
 
-# Evaluation artifacts
-eval_reports/
+# Benchmark artifacts
+benchmarks/datasets/
+benchmarks/results/

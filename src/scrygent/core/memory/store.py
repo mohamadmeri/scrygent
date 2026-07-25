@@ -7,16 +7,13 @@ Hugging Face's serverless inference API for zero-infrastructure embeddings.
 
 import hashlib
 import logging
-import os
 from typing import Any
 
 import requests
-from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
-# Load environment variables at module initialization
-load_dotenv()
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +24,15 @@ VECTOR_NAME_TARGET = "fast-bge-small-en"
 
 
 def _get_client() -> QdrantClient | None:
-    """Initializes the Qdrant client using environment credentials."""
-    url = os.getenv("QDRANT_URL")
-    api_key = os.getenv("QDRANT_API_KEY")
-    if not url or not api_key:
-        logger.warning("Memory disabled: Qdrant credentials missing.")
+    """Initializes the Qdrant client using typed settings."""
+    if not settings.memory_enabled:
         return None
-    return QdrantClient(url=url, api_key=api_key)
+
+    if not settings.qdrant_url or not settings.qdrant_api_key:
+        logger.warning("Memory disabled: Qdrant credentials missing in configuration.")
+        return None
+
+    return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value())
 
 
 def _ensure_collection(client: QdrantClient) -> None:
@@ -55,20 +54,15 @@ def _embed_text_huggingface(text: str) -> list[float] | None:
     Returns:
         A list of floats representing the embedding vector, or None on failure.
     """
-    hf_token = os.getenv("HF_API_TOKEN")
-    if not hf_token:
-        logger.warning("HF_API_TOKEN environment variable not set; skipping memory.")
+    if not settings.hf_api_token:
+        logger.warning("HF_API_TOKEN configuration missing; skipping memory embedding.")
         return None
 
-    api_url = os.getenv(
-        "HF_EMBEDDING_API_URL",
-        "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
-    )
-    headers = {"Authorization": f"Bearer {hf_token}"}
+    headers = {"Authorization": f"Bearer {settings.hf_api_token.get_secret_value()}"}
 
     try:
         response = requests.post(
-            api_url,
+            settings.hf_embedding_api_url,
             json={"inputs": text, "options": {"wait_for_model": True}},
             headers=headers,
             timeout=15,
@@ -111,7 +105,6 @@ def retrieve_experience(query: str, top_k: int = 2) -> str:
 
     try:
         _ensure_collection(client)
-
         response = client.query_points(
             collection_name=COLLECTION_NAME,
             query=vec,
@@ -156,13 +149,10 @@ def commit_experience(query: str, plan: Any) -> None:
 
     try:
         _ensure_collection(client)
-
         vector_id = hashlib.md5(query.encode("utf-8")).hexdigest()
         plan_json = plan.model_dump_json(indent=2)
 
-        point = PointStruct(
-            id=vector_id, vector={VECTOR_NAME_TARGET: vec}, payload={"query": query, "plan_json": plan_json}
-        )
+        point = PointStruct(id=vector_id, vector={VECTOR_NAME_TARGET: vec}, payload={"query": query, "plan_json": plan_json})
 
         client.upsert(collection_name=COLLECTION_NAME, points=[point])
         logger.info("Successfully committed execution to long-term memory.")
