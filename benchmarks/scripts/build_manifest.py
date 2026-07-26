@@ -12,29 +12,38 @@ logger = logging.getLogger(__name__)
 
 def build_infiagent_manifest(raw_dir: Path, output_path: Path) -> None:
     """Parses InfiAgent metadata into the standard manifest format."""
-    metadata_path = raw_dir / "metadata.jsonl"
-    csv_dir = raw_dir / "csvs"
+    questions_path = raw_dir / "da-dev-questions.jsonl"
+    labels_path = raw_dir / "da-dev-labels.jsonl"
+    csv_dir = raw_dir / "da-dev-tables"
 
-    if not metadata_path.exists():
-        raise FileNotFoundError(f"Metadata file not found at {metadata_path}")
+    if not questions_path.exists() or not labels_path.exists():
+        raise FileNotFoundError(f"Metadata files not found in {raw_dir}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(metadata_path, encoding="utf-8") as infile, open(output_path, "w", encoding="utf-8") as outfile:
+    # Load labels into a dictionary for O(1) lookup, using string keys for safety
+    labels: dict[str, str] = {}
+    with open(labels_path, encoding="utf-8") as f:
+        for line in f:
+            item = json.loads(line)
+            # Handle potential variations in the answer key name and list serialization
+            ans = item.get("common_answers", item.get("answer", ""))
+            labels[str(item["id"])] = json.dumps(ans) if isinstance(ans, list) else str(ans)
+
+    with open(questions_path, encoding="utf-8") as infile, open(output_path, "w", encoding="utf-8") as outfile:
         for line in tqdm(infile, desc="Building manifest"):
-            raw_item = json.loads(line)
+            q_item = json.loads(line)
+            q_id = str(q_item.get("id", ""))
+            query = q_item.get("question", "")
+            file_name = q_item.get("file_name", "")
 
-            query = raw_item.get("query", "")
-            gold_answer = raw_item.get("answer", "")
-            item_id = raw_item.get("id", "")
+            # Map to the local CSV path
+            csv_path = (csv_dir / file_name).resolve()
 
-            csv_filename = raw_item.get("filename", f"{item_id}.csv")
-            if not csv_filename.endswith(".csv"):
-                csv_filename += ".csv"
+            # Get the gold answer from the labels dictionary
+            gold_answer = labels.get(q_id, "")
 
-            csv_path = (csv_dir / csv_filename).resolve()
-
-            manifest_entry = {"id": item_id, "query": query, "gold_answer": str(gold_answer), "csv_path": str(csv_path)}
+            manifest_entry = {"id": f"IA-{q_id}", "query": query, "gold_answer": gold_answer, "csv_path": str(csv_path)}
             outfile.write(json.dumps(manifest_entry) + "\n")
 
     logger.info("✅ Manifest successfully written to %s", output_path)
