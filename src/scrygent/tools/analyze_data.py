@@ -143,7 +143,11 @@ def analyze_data(
     response: dict[str, Any] = {"result": final_result}
 
     if group_by or metrics:
-        out_df = pd.DataFrame(final_result)
+        if isinstance(final_result, dict):
+            out_df = pd.DataFrame([final_result])
+        else:
+            out_df = pd.DataFrame(final_result)
+
         new_csv_path = write_temp_csv(out_df, prefix="scrygent_analyzed_")
         response["current_csv_path"] = str(new_csv_path)
 

@@ -145,9 +145,7 @@ class TestAnalyzeDataEdgeCases:
         metrics: list[dict[str, Any]] = [{"column": "age", "aggregation": "mean", "alias": "avg_age"}]
         sort: dict[str, str] = {"column": "passenger_id", "direction": "asc"}
 
-        with pytest.raises(
-            ValueError, match="Sort column 'passenger_id' not found. Must be an aggregation alias or group dimension."
-        ) as exc_info:
+        with pytest.raises(ValueError, match="Sort column 'passenger_id' not found. Must be an aggregation alias or group dimension.") as exc_info:
             analyze_data(sample_df, metrics=metrics, group_by=["gender"], sort=sort)
 
         assert "Available: ['avg_age', 'gender']" in str(exc_info.value)
