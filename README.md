@@ -2,25 +2,28 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark-theme.jpeg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light-theme.jpeg">
-    <img alt="Scrygent Logo" src="docs/assets/logo-light-theme.png" width="120">
+    <img alt="Scrygent Logo" src="docs/assets/logo-light-theme.jpeg" width="120">
   </picture>
+  <h1>Scrygent</h1>
+  <p><strong>A Strictly Typed Compiler Engine for Data Analysis</strong></p>
 
-  # Scrygent
-  
-  **A Strictly Typed Compiler Engine for Data Analysis**
-  
-  [![CI](https://github.com/mohamadmeri/scrygent/actions/workflows/ci.yml/badge.svg)](https://github.com/mohamadmeri/scrygent/actions/workflows/ci.yml)
+  [![CI Status](https://github.com/mohamadmeri/scrygent/actions/workflows/ci.yml/badge.svg)](https://github.com/mohamadmeri/scrygent/actions/workflows/ci.yml)
   [![Codecov](https://codecov.io/gh/mohamadmeri/scrygent/branch/main/graph/badge.svg)](https://codecov.io/gh/mohamadmeri/scrygent)
   [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-  [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  [![Python](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/)
+  [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+  <br/>
+
+  ### 🚀 [Try the Live Demo](https://https://scrygent.netlify.app/)
+
 </div>
 
 <br/>
 
 <div align="center">
-  <img src="docs/assets/ui_screenshot.png" alt="Scrygent UI" width="100%" style="border-radius: 8px; border: 1px solid #333;" />
-  <p><em>The deployed Streamlit compilation interface.</em></p>
+  <img src="docs/assets/ui_screenshot.png" alt="Scrygent UI" width="100%" style="border-radius: 8px; border: 1px solid #333;">
+  <p><em>The deployed Streamlit compilation interface. Upload any CSV and ask questions in plain English.</em></p>
 </div>
 
 <br/>
