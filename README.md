@@ -19,9 +19,8 @@
 <br/>
 
 <div align="center">
-  <!-- TODO: Insert final UI screenshot here -->
   <img src="docs/assets/ui_screenshot.png" alt="Scrygent UI" width="100%" style="border-radius: 8px; border: 1px solid #333;" />
-  <p><em>The IDE-style compilation interface. (Deployment: WIP)</em></p>
+  <p><em>The deployed Streamlit compilation interface.</em></p>
 </div>
 
 <br/>
@@ -34,7 +33,7 @@
 
 | Module | Description |
 | :--- | :--- |
-| [**Architecture**](docs/ARCHITECTURE.md) | Deep dive into the 3-pass compiler, dependency hierarchy, and self-healing loops. |
+| [**Architecture**](docs/ARCHITECTURE.md) | Deep dive into the 2-pass compiler, dependency hierarchy, and self-healing loops. |
 | [**Benchmarks (WIP)**](#benchmarks--evaluation-wip) | Empirical evaluation metrics against DABench and DataBench Lite. *(WIP)* |
 
 ---
@@ -45,7 +44,7 @@ Scrygent abandons the fragile "ReAct" loop of generating and executing arbitrary
 
 ```mermaid
 flowchart LR
-    U[User Query] --> PL[3-Pass Planner LLM]
+    U[User Query] --> PL[2-Pass Planner LLM]
     CSV[(CSV Dataset)] --> P[Profiler Node]
     P -->|Global Schema & Stats| PL
     PL -->|Strict Pydantic IR| EX[Deterministic Executor]
@@ -62,7 +61,7 @@ flowchart LR
 ```
 
 1. **Profiler:** Extracts global schemas and query-aware statistics deterministically. This minimizes prompt size.
-2. **Planner:** Translates intent into strict JSON using a 3-pass compiler (Parser → Optimizer → IR Emitter).
+2. **Planner:** Translates intent into strict JSON using a 2-pass compiler (Parser → IR Emitter).
 3. **Executor:** Dispatches validated payloads to a handwritten, stateless suite of pure Python tools.
 4. **Reporter:** Synthesizes the final report. It strictly constrains output to verified tool results.
 
@@ -72,8 +71,12 @@ flowchart LR
 
 These implementation details form the core of Scrygent's reliability.
 
-*   **The 3-Pass Compiler Pipeline:** Forcing an LLM to simultaneously reason about data logic and format nested JSON causes cognitive overload. Scrygent separates this into three distinct passes: an abstract Parser, a heuristic Optimizer, and a strict IR Emitter locked behind `json_mode`.
+*   **The 2-Pass Compiler Pipeline:** Forcing an LLM to simultaneously reason about data logic and format nested JSON causes cognitive overload. Scrygent separates this into two distinct passes: an abstract Parser and a strict IR Emitter locked behind `json_mode`. The system removes the intermediate "Optimizer" pass. LLM-side query optimization yields diminishing returns compared to the latency and token costs. The deterministic Python executor is already highly optimized.
+*   **Prompt Caching & Context Efficiency:** Scrygent consolidates static rules into a `SHARED_COMPILER_PREFIX`. This maximizes KV-cache hit rates on LLM providers. It reduces latency and token costs.
+*   **Decoupled Model Routing:** Scrygent separates Planner models (Reasoning/Formatting) from the Reporter model via `pydantic-settings`. This allows fast models for JSON emission and heavy models for natural language synthesis.
 *   **The Hermetic JSON Boundary:** Pandas and NumPy operations produce C-types (`np.int64`, `pd.NaT`, `np.nan`). These C-types crash standard JSON serializers. Scrygent intercepts this via `ScrygentBaseModel`. It applies a recursive `@model_validator(mode="wrap")` to scrub and cast all data to native Python primitives at the exact moment of state assignment.
+*   **Materialized Aggregation State:** The `analyze_data` tool persists grouped and metric results to a temporary CSV. It returns `current_csv_path`. This allows downstream tools (like `generate_plot`) to read newly created metric aliases.
+*   **Strict Behavioral Directives:** Scrygent enforces prompt directives to eliminate LLM blind spots. These include `ENTITY vs. VALUE`, `COMPARISONS & STATE PRESERVATION` (preventing destructive filter chaining), `DERIVE_COLUMN LIMITATIONS` (forbidding Python `if/else` in arithmetic), and `STRICT SCHEMA ADHERENCE`.
 *   **Self-Healing Execution with Actionable Context:** Execution failures do not crash the system. The Python exception catches the error. It enriches the error with the *exact list of available columns*. The system routes this error through an internal LLM correction loop. The LLM repairs its own payload syntax mid-flight.
 *   **The Multi-Step Composition Pattern:** Tools never pass massive DataFrames through the LangGraph state. Transforming tools (`filter_dataset`, `derive_column`) write their output to a secure, temporary CSV. They update `AgentState.current_csv_path`. Subsequent steps inherit the filtered data. This maintains the stateless-tools rule.
 *   **Semantic Experience Replay:** Successful execution plans automatically embed and store in a Qdrant vector database. Future queries retrieve structurally similar past plans as few-shot examples. This allows the planner to improve over time without retraining.
@@ -100,17 +103,34 @@ Scrygent uses industry-standard benchmarks to validate its deterministic approac
   - Correction-loop success rate  
   - End-to-end task completion
   - Latency breakdown by compiler pass
-  - Schema failure rate (with vs. without 3-pass split)
+  - Schema failure rate (with vs. without 2-pass split)
 
-### Robustness Testing
+### Evaluation Harness
 
-The system generates "poisoned" variants of clean benchmark CSVs to test error handling:
-- UTF-16/CP1252 encodings
-- Semicolon/pipe delimiters
-- Mixed-type columns (numeric + string artifacts)
-- Missing headers, offset data rows
+The `benchmarks/` directory contains an isolated evaluation subsystem. It ensures reproducible and resumable benchmark execution.
 
-**See [`scripts/run_benchmark.py`](scripts/run_benchmark.py) for the evaluation harness.**
+**Directory Structure:**
+- `benchmarks/scripts/`: Execution scripts for downloading, manifest building, running, and scoring.
+- `benchmarks/datasets/`: Raw dataset storage.
+- `benchmarks/manifests/`: Standardized `manifest.jsonl` files mapping queries to gold answers and CSV paths.
+- `benchmarks/results/`: Output directories containing `predictions.csv`, `summary.json`, and failure traces.
+
+**Core Scripts:**
+- `download.py`: Fetches raw dataset files idempotently. It uses `huggingface_hub.snapshot_download` to bypass schema unification errors common with heterogeneous CSVs.
+- `build_manifest.py`: Parses raw metadata (e.g., InfiAgent split JSONL files) into a standardized `manifest.jsonl` format.
+- `run_eval.py`: The core execution loop. It initializes `AgentState` with `eval_mode=True`. It supports resumable execution via atomic `checkpoint.json` files. It captures latency, retries, and agent answers. If a query fails, it saves a detailed JSON trace to `failures/`.
+- `score.py`: Computes accuracy, failure rates, and latency percentiles. It generates a standardized `summary.json` proof artifact.
+
+See [`benchmarks/scripts/run_eval.py`](benchmarks/scripts/run_eval.py) and [`benchmarks/scripts/score.py`](benchmarks/scripts/score.py) for implementation details.
+
+---
+
+## Roadmap & Future Work
+
+*   **Tool Registry Expansion:** Introduce `bin_column` (numerical threshold bracketing) and `map_values` (semantic dictionary mapping). These tools will support complex cohort analysis without breaking the hermetic execution boundary.
+*   **Continuous Regression Benchmarking:** Enhance the world-class, isolated `benchmarks/` subsystem. It will feature atomic checkpointing, deep-dive failure tracing, and standardized proof artifacts.
+*   **Multi-Turn Conversational State:** Extend LangGraph state to persist materialized CSV paths across multiple queries. This will enable iterative drill-downs.
+*   **Scrygent Enterprise (Air-Gapped Deployments):** Develop on-premise, privacy-preserving deployments. Raw data will be profiled and executed locally. Only lightweight metadata profiles will be sent to cloud LLMs (Zero-Data-Leakage Hybrid). The system will also support fully air-gapped local LLM execution.
 
 ---
 
@@ -129,9 +149,13 @@ The system generates "poisoned" variants of clean benchmark CSVs to test error h
 
 ---
 
-## Local Development
+## Local Development & Configuration
 
-Clone the repository and initialize the environment using `uv`:
+Scrygent follows the 12-Factor App methodology using `pydantic-settings`. Configuration is managed via environment variables, with specific entry points depending on how you interact with the system.
+
+### 1. Clone & Install
+
+Initialize the environment using `uv`:
 
 ```bash
 git clone https://github.com/mohamadmeri/scrygent.git
@@ -139,28 +163,39 @@ cd scrygent
 uv sync
 ```
 
-Create a secrets file and populate it with your API credentials:
+### 2. Configuration
 
+Depending on your entry point, you will configure your credentials in one of two ways:
+
+**Option A: For the Streamlit UI (Recommended for local development)**
+Streamlit natively reads from `.streamlit/secrets.toml`. The `app.py` entry point automatically injects these secrets into the environment on startup, seamlessly feeding the core engine.
 ```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# Edit .streamlit/secrets.toml with your API keys (e.g., GROQ_API_KEY, OPENROUTER_API_KEY)
 ```
 
-```toml
-# .streamlit/secrets.toml
-GROQ_API_KEY = "..."
-OPENROUTER_API_KEY = "..."
-QDRANT_URL = "..."
-QDRANT_API_KEY = "..."
-HF_API_TOKEN = "..."
+**Option B: For the Core Engine, CLI, and Benchmark Scripts**
+When running evaluation scripts (e.g., `benchmarks/scripts/run_eval.py`) or executing the engine outside of Streamlit (like in CI/CD pipelines), the system reads directly from a standard `.env` file.
+```bash
+cp .env.example .env
+# Edit .env with your API keys
 ```
+*(Note: You only need to maintain the set of keys relevant to your current entry point. You do not need to duplicate them).*
 
-Run the application:
+### 3. Run the Application
 
+**To launch the interactive UI:**
 ```bash
 uv run streamlit run app.py
 ```
 
----
+**To run the benchmark evaluation harness (requires Option B):**
+```bash
+uv run python benchmarks/scripts/run_eval.py \
+    --manifest benchmarks/manifests/infiagent.jsonl \
+    --output_dir benchmarks/results/infiagent_smoke \
+    --limit 10
+```
 
 ## Deep Dive Documentation
 

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel, SecretStr
 
-from scrygent.core.memory import memory
+from scrygent.core import memory
 
 
 class DummyPlan(BaseModel):
@@ -31,7 +31,7 @@ def mock_memory_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_settings.qdrant_api_key = SecretStr("test-qdrant-key")
     mock_settings.hf_api_token = SecretStr("test-hf-token")
     mock_settings.hf_embedding_api_url = "http://mock-hf-url"
-    monkeypatch.setattr("scrygent.core.memory.store.settings", mock_settings)
+    monkeypatch.setattr("scrygent.core.memory.settings", mock_settings)
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ class TestMemoryClientInitialization:
 
         The factory must return None and disable memory gracefully.
         """
-        monkeypatch.setattr("scrygent.core.memory.store.settings.qdrant_url", None)
+        monkeypatch.setattr("scrygent.core.memory.settings.qdrant_url", None)
         assert memory._get_client() is None
 
     def test_get_client_returns_none_on_missing_qdrant_api_key(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:
@@ -68,7 +68,7 @@ class TestMemoryClientInitialization:
 
         The factory must return None and disable memory gracefully.
         """
-        monkeypatch.setattr("scrygent.core.memory.store.settings.qdrant_api_key", None)
+        monkeypatch.setattr("scrygent.core.memory.settings.qdrant_api_key", None)
         assert memory._get_client() is None
 
 
@@ -108,7 +108,7 @@ class TestHuggingFaceEmbedding:
 
         The wrapper must return None immediately without attempting the API call.
         """
-        monkeypatch.setattr("scrygent.core.memory.store.settings.hf_api_token", None)
+        monkeypatch.setattr("scrygent.core.memory.settings.hf_api_token", None)
         assert memory._embed_text_huggingface("test query") is None
 
     def test_returns_none_on_api_network_failure(self, monkeypatch: pytest.MonkeyPatch, mock_memory_settings: None) -> None:

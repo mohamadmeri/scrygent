@@ -1,6 +1,6 @@
 # Scrygent Architecture Document
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Last Updated:** July 2026  
 
 This document defines the structural constraints, data flow, and engineering decisions of the Scrygent deterministic compiler engine. It is the canonical reference for understanding how the system maintains mathematical determinism in a non-deterministic LLM environment.
@@ -12,7 +12,7 @@ This document defines the structural constraints, data flow, and engineering dec
 1. [Executive Summary](#executive-summary)
 2. [The Dependency Golden Rule](#the-dependency-golden-rule)
 3. [Core Architecture](#core-architecture)
-   - [The 3-Pass Compiler Pipeline](#the-3-pass-compiler-pipeline)
+   - [The 2-Pass Compiler Pipeline](#the-2-pass-compiler-pipeline)
    - [The Hermetic JSON Boundary](#the-hermetic-json-boundary)
    - [Multi-Step Composition Pattern](#multi-step-composition-pattern)
 4. [Component Deep Dive](#component-deep-dive)
@@ -64,7 +64,7 @@ flowchart TD
     Models --> Contracts
     Tools[Tools Layer<br/>analyze_data, filter, stats] --> IR
     Tools --> Contracts
-    Core[Core Infrastructure<br/>resilience, llm_factory, memory] --> Models
+    Core[Core Infrastructure<br/>resilience, llm_factory, memory, config] --> Models
     Core --> Contracts
     IR[IR Layer<br/>Pydantic Schemas] --> Contracts
     Contracts[Contracts Layer<br/>StrEnums, ToolName]
@@ -87,7 +87,7 @@ flowchart TD
 | **IR** | `ir/` | Strict Pydantic schemas for tool parameters (`AnalyzeDataParams`). | `contracts/` |
 | **Models** | `models/` | State definitions (`AgentState`), execution `Plan`, tool registry. | `ir/`, `contracts/` |
 | **Tools** | `tools/` | Pure Python functions (filtering, aggregation, regression, visualization). | `ir/`, `contracts/` |
-| **Core Infrastructure** | `core/resilience.py`, `core/llm_factory.py`, `core/memory/` | Network backoff, LLM client instantiation, semantic vector storage. | `models/`, `contracts/` |
+| **Core Infrastructure** | `core/resilience.py`, `core/llm_factory.py`, `core/memory/`, `core/config.py` | Network backoff, LLM client instantiation, semantic vector storage, configuration. | `models/`, `contracts/` |
 | **Agents** | `agents/` | LangGraph nodes (profiler, planner, executor, reporter). | `tools/`, `models/`, `ir/`, `core` |
 | **Graph** | `graph/` | Orchestrates node routing via `AgentState.execution_status`. | `agents/`, `models/` |
 | **UI** | `app.py`, `ui/` | Streamlit presentation layer. It invokes graph once and caches in `st.session_state`. | `graph/`, `core` |
@@ -96,23 +96,21 @@ flowchart TD
 
 ## Core Architecture
 
-### The 3-Pass Compiler Pipeline
+### The 2-Pass Compiler Pipeline
 
 Forcing an LLM to simultaneously reason about data logic, optimize execution order, and format nested JSON arrays causes cognitive overload. This results in dropped parameters, schema hallucinations, and Pydantic validation failures.
 
-**Solution:** Scrygent's Planner Node acts as a 3-pass compiler. It separates strategic reasoning from structural syntax.
+**Solution:** Scrygent's Planner Node acts as a 2-pass compiler. It separates strategic reasoning from structural syntax. The system transitioned from a 3-pass to a 2-pass compiler. The system removed the intermediate "Optimizer" pass. LLM-side query optimization yielded diminishing returns compared to the latency and token costs. The deterministic Python executor is already highly optimized.
 
 ```mermaid
 flowchart LR
     U[User Query] --> P1[Pass 1: Parser<br/>Abstract Intent]
-    P1 --> P2[Pass 2: Optimizer<br/>Execution Heuristics]
-    P2 --> P3[Pass 3: IR Emitter<br/>Strict JSON Binding]
-    P3 --> EX[Executor]
+    P1 --> P2[Pass 2: IR Emitter<br/>Strict JSON Binding]
+    P2 --> EX[Executor]
     
     style U fill:#1C1A18,stroke:#5EEAD4,stroke-width:2px,color:#F5F0EB
     style P1 fill:#1C1A18,stroke:#F59E0B,stroke-width:2px,color:#F5F0EB
     style P2 fill:#1C1A18,stroke:#F59E0B,stroke-width:2px,color:#F5F0EB
-    style P3 fill:#1C1A18,stroke:#F59E0B,stroke-width:2px,color:#F5F0EB
     style EX fill:#1C1A18,stroke:#7FB069,stroke-width:2px,color:#F5F0EB
 ```
 
@@ -121,20 +119,13 @@ flowchart LR
 - **Mechanism:** Uses default tool-calling to allow rich natural language in `intent_description` fields.
 - **Output:** `DraftPlan` containing abstract steps with reasoning chains.
 
-#### Pass 2: The Optimizer (Execution Heuristics)
-- **Goal:** Rewrite the `DraftPlan` to be computationally efficient.
-- **Mechanism:** Applies database-style heuristics:
-  - **Filter Pushdown:** Move `filter_dataset` steps as early as possible.
-  - **Metric Consolidation:** Merge multiple aggregations on the same dataset into one `analyze_data` step.
-  - **Top-N Query Routing:** Convert "highest/lowest" queries into `analyze_data` with `sort` + `limit: 1`.
-- **Constraint:** The Conservation Invariant. Optimization alters execution structure, never analytical parameters.
-
-#### Pass 3: The IR Emitter (Strict JSON Binding)
+#### Pass 2: The IR Emitter (Strict JSON Binding)
 - **Goal:** Translate the optimized plan into strict Pydantic JSON parameters.
 - **Mechanism:** Explicitly locks output behind `method="json_mode"`. This restricts output vocabulary to valid JSON tokens and prevents markdown wrappers.
+- **Prompt Caching & Context Efficiency:** Scrygent consolidates static rules into a `SHARED_COMPILER_PREFIX`. This maximizes KV-cache hit rates on LLM providers. It reduces latency and token costs.
 - **Self-Healing:** If emitted JSON violates Pydantic schema, an internal correction loop catches the `ValidationError`. It injects the exact failing field path and forces the LLM to repair syntax before aborting.
 
-**Trade-off:** This requires 3 sequential LLM calls, adding ~2-3 seconds latency.  
+**Trade-off:** This requires 2 sequential LLM calls, adding ~1-2 seconds latency.  
 **Return:** Virtually eliminates schema hallucinations and ensures optimized data routing.
 
 ---
@@ -179,6 +170,7 @@ Tools never pass massive DataFrames through the LangGraph state. This prevents s
 1. Transforming tools (`filter_dataset`, `derive_column`) write output to a secure, temporary CSV via `pathlib.Path`.
 2. They update `AgentState.current_csv_path`.
 3. Subsequent steps inherit the filtered data.
+4. The `analyze_data` tool persists grouped and metric results to a temporary CSV. It returns `current_csv_path`. This allows downstream tools (like `generate_plot`) to read newly created metric aliases.
 
 ```mermaid
 sequenceDiagram
@@ -230,7 +222,11 @@ This allows the Planner to compare multiple filtered subsets within a single pla
 **Input:** User query + `data_profile` (global schema and detailed stats).  
 **Output:** `Plan` (Pydantic list of `Step` objects).
 
+**Decoupled Model Routing:** Scrygent separates Planner models (Reasoning/Formatting) from the Reporter model via `pydantic-settings`. This allows fast models for JSON emission and heavy models for natural language synthesis.
+
 **Structured Output:** Uses LangChain's `.with_structured_output()` to enforce Pydantic schema directly. The Planner sees the complete `global_schema`, so it is never blind to column existence.
+
+**Strict Behavioral Directives:** Scrygent enforces prompt directives to eliminate LLM blind spots. These include `ENTITY vs. VALUE`, `COMPARISONS & STATE PRESERVATION` (preventing destructive filter chaining), `DERIVE_COLUMN LIMITATIONS` (forbidding Python `if/else` in arithmetic), and `STRICT SCHEMA ADHERENCE`.
 
 **Lazy Fetch Boundary:** If detailed stats are needed for columns not in `detailed_stats`, the Planner must output a single-step plan: `request_column_stats`. This triggers the constrained re-plan loop.
 
@@ -343,7 +339,7 @@ This turns a fragile retry loop into a deterministic self-healing compiler pass.
 
 ## Semantic Memory & Experience Replay
 
-**Location:** `src/scrygent/core/memory/store.py`  
+**Location:** `src/scrygent/core/memory.py`  
 **Backend:** Qdrant Cloud (serverless vector DB)  
 **Embeddings:** HuggingFace serverless inference API (`sentence-transformers/all-MiniLM-L6-v2`)
 
@@ -413,8 +409,8 @@ This turns a fragile retry loop into a deterministic self-healing compiler pass.
 
 ## Design Trade-offs
 
-### 1. Latency vs. Accuracy (3-Pass Pipeline)
-**Trade-off:** 3 sequential LLM calls add ~2-3 seconds latency.  
+### 1. Latency vs. Accuracy (2-Pass Pipeline)
+**Trade-off:** 2 sequential LLM calls add ~1-2 seconds latency.  
 **Return:** Virtually eliminates schema hallucinations and ensures optimized data routing.
 
 ### 2. Expressiveness vs. Determinism (No Sandbox)
