@@ -13,7 +13,7 @@ import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from ..config import settings
+from .config import settings
 
 logger = logging.getLogger(__name__)
 

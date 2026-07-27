@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from ..core.config import settings
 from ..core.llm_factory import get_structured_llm
-from ..core.memory.store import commit_experience
+from ..core.memory import commit_experience
 from ..core.resilience import ServiceExhaustedError, resilient_call
 from ..models.outputs import AnalysisReport, DirectAnswer
 from ..models.state import AgentState

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from ..core.config import settings
 from ..core.llm_factory import get_structured_llm
-from ..core.memory.store import retrieve_experience
+from ..core.memory import retrieve_experience
 from ..core.resilience import resilient_call
 from ..models.abstract_step_models import DraftPlan
 from ..models.state import AgentState
