@@ -1,6 +1,6 @@
 # Scrygent Architecture Document
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Last Updated:** July 2026  
 
 This document defines the structural constraints, data flow, and engineering decisions of the Scrygent deterministic compiler engine. It is the canonical reference for understanding how the system maintains mathematical determinism in a non-deterministic LLM environment.
@@ -90,7 +90,7 @@ flowchart TD
 | **Core Infrastructure** | `core/resilience.py`, `core/llm_factory.py`, `core/memory/`, `core/config.py` | Network backoff, LLM client instantiation, semantic vector storage, configuration. | `models/`, `contracts/` |
 | **Agents** | `agents/` | LangGraph nodes (profiler, planner, executor, reporter). | `tools/`, `models/`, `ir/`, `core` |
 | **Graph** | `graph/` | Orchestrates node routing via `AgentState.execution_status`. | `agents/`, `models/` |
-| **UI** | `app.py`, `ui/` | Streamlit presentation layer. It invokes graph once and caches in `st.session_state`. | `graph/`, `core` |
+| **UI** | `app.py`, `ui/` | Streamlit presentation layer. `ui/orchestration.py` handles graph invocation and state management. | `graph/`, `core` |
 
 ---
 
@@ -218,7 +218,7 @@ This allows the Planner to compare multiple filtered subsets within a single pla
 
 ### Planner Node
 
-**Type:** LLM (Groq, Llama 3.3 70B)  
+**Type:** LLM (Provider-agnostic via `llm_factory`)  
 **Input:** User query + `data_profile` (global schema and detailed stats).  
 **Output:** `Plan` (Pydantic list of `Step` objects).
 
@@ -436,16 +436,18 @@ This turns a fragile retry loop into a deterministic self-healing compiler pass.
 Scrygent operates as a single-pass `StateGraph` driven by `AgentState.execution_status`:
 
 ```mermaid
-flowchart TD
-    Start((start)) --> Profiler
-    Profiler -->|execution_status != 'aborted'| Planner
-    Planner -->|execution_status != 'aborted'| Executor
-    Executor -->|execution_status == 'running'| Executor
-    Executor -->|execution_status == 'replan' AND has_replanned == False| Planner
-    Executor -->|execution_status == 'complete'| Reporter
-    Executor -->|execution_status == 'aborted'| Abort
-    Reporter --> End((end))
-    Abort --> End((end))
+flowchart LR
+    Start((Start)) --> Profiler
+    Profiler -->|"status != aborted"| Planner
+    Planner -->|"status != aborted"| Executor
+    
+    Executor -->|"status == running"| Executor
+    Executor -->|"status == replan<br>AND has_replanned == False"| Planner
+    Executor -->|"status == complete"| Reporter
+    Executor -->|"status == aborted"| Abort
+    
+    Reporter --> End((End))
+    Abort --> End((End))
     
     style Start fill:#1C1A18,stroke:#5EEAD4,stroke-width:2px,color:#F5F0EB
     style Profiler fill:#1C1A18,stroke:#7FB069,stroke-width:2px,color:#F5F0EB
@@ -456,7 +458,7 @@ flowchart TD
     style End fill:#1C1A18,stroke:#5EEAD4,stroke-width:2px,color:#F5F0EB
 ```
 
-**No Checkpointer:** Scrygent is a single-pass fire-and-forget engine. State persistence across UI rerenders is handled by `st.session_state` caching in `app.py`.
+**No Checkpointer:** Scrygent is a single-pass fire-and-forget engine. The dedicated `ui/` layer (specifically `ui/orchestration.py` and `ui/views.py`) handles graph invocation, state management, and rendering logic.
 
 ---
 
