@@ -437,16 +437,17 @@ Scrygent operates as a single-pass `StateGraph` driven by `AgentState.execution_
 
 ```mermaid
 flowchart TD
-    [*] --> Profiler
-    Profiler --> Planner: execution_status != "aborted"
-    Planner --> Executor: execution_status != "aborted"
-    Executor --> Executor: execution_status == "running"
-    Executor --> Planner: execution_status == "replan" AND has_replanned == False
-    Executor --> Reporter: execution_status == "complete"
-    Executor --> Abort: execution_status == "aborted"
-    Reporter --> End
-    Abort --> End
+    Start((start)) --> Profiler
+    Profiler -->|execution_status != 'aborted'| Planner
+    Planner -->|execution_status != 'aborted'| Executor
+    Executor -->|execution_status == 'running'| Executor
+    Executor -->|execution_status == 'replan' AND has_replanned == False| Planner
+    Executor -->|execution_status == 'complete'| Reporter
+    Executor -->|execution_status == 'aborted'| Abort
+    Reporter --> End((end))
+    Abort --> End((end))
     
+    style Start fill:#1C1A18,stroke:#5EEAD4,stroke-width:2px,color:#F5F0EB
     style Profiler fill:#1C1A18,stroke:#7FB069,stroke-width:2px,color:#F5F0EB
     style Planner fill:#1C1A18,stroke:#F59E0B,stroke-width:2px,color:#F5F0EB
     style Executor fill:#1C1A18,stroke:#7FB069,stroke-width:2px,color:#F5F0EB
