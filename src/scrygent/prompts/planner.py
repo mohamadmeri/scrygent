@@ -1,4 +1,9 @@
-"""System prompts for the 2-Pass Compiler Pipeline."""
+"""System prompts for the 2-Pass Compiler Pipeline.
+
+These prompts define the strict behavioral boundaries for the Planner Node's
+two sequential LLM calls. They enforce the separation of strategic reasoning
+from structural JSON schema generation.
+"""
 
 # ==============================================================================
 # SHARED COMPILER PREFIX (Cached for efficiency, applies to both passes)
@@ -22,8 +27,9 @@ DO NOT invent tools like "sort", "limit", "select", "sort_dataset", or "get_top_
 All sorting, limiting, selecting, and grouping MUST be handled by a single call to the "analyze_data" tool.
 
 ENTITY vs. VALUE (CRITICAL):
-- If the user asks for a mathematical aggregate (e.g., "What is the maximum height?", "What is the average salary?"), use `analyze_data` with `metrics`.
-- If the user asks for the top/bottom N items, entities, or raw rows (e.g., "Who is the tallest athlete?", "What are the top 4 most viewed talks?"), DO NOT use `metrics`. Instead, use `analyze_data` with `sort` on the target column and `limit` to retrieve the raw rows. Adding `metrics` to a top-N query is a logic error because it aggregates the data and destroys the row context.
+- If the user asks for a mathematical aggregate (e.g., "What is the maximum height?", "What is the average salary?"), use `analyze_data` with BOTH `group_by` (if needed) and `metrics`.
+- If the user asks for the top/bottom N items, entities, or raw rows (e.g., "Who is the tallest athlete?", "What are the top 4 most viewed talks?"), you MUST retrieve the raw rows. To retrieve raw rows, use `analyze_data` with `sort` and `limit`, but you MUST omit `group_by` and `metrics` entirely. Grouping data destroys raw rows.
+- LOGIC RULE: You cannot use `group_by` unless you also provide `metrics`. If you need to group data to answer a question (e.g. "Which genre has the highest energy?"), you must use `metrics` to calculate the aggregate (e.g., max energy) for each group before sorting it.
 
 COMPARISONS & STATE PRESERVATION (CRITICAL): 
 - If comparing categories (e.g., "survival rate of 1st vs 3rd class"), use a SINGLE `analyze_data` step with `group_by`, `metrics`, and an `in` filter. 
