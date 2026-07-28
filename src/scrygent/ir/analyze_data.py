@@ -43,9 +43,13 @@ class AnalyzeDataParams(ScrygentBaseModel):
 
     @model_validator(mode="after")
     def _aliases_unique_and_sort_resolvable(self) -> AnalyzeDataParams:
-        """Validates that metric aliases are unique and the sort target is resolvable."""
+        """Validates that metric aliases are unique and the sort target is resolvable.
+
+        Prevents silent collisions in the output record and ensures the sort
+        column references a valid metric alias or group-by column.
+        """
         aliases = []
-        if self.metrics is not None:
+        if self.metrics:
             aliases = [m.alias for m in self.metrics]
             if len(aliases) != len(set(aliases)):
                 dupes = sorted({a for a in aliases if aliases.count(a) > 1})
@@ -54,10 +58,7 @@ class AnalyzeDataParams(ScrygentBaseModel):
                 )
 
         if self.sort is not None:
-            # If we are aggregating or grouping, we MUST sort by the output columns.
-            # If we are just sorting raw data (no metrics/groups), we skip this IR check
-            # and let the Python tool validate the column against df.columns at runtime.
-            if self.metrics is not None or self.group_by is not None:
+            if self.metrics or self.group_by:
                 valid_targets = set(aliases) | set(self.group_by or [])
                 if self.sort.column not in valid_targets:
                     raise ValueError(
